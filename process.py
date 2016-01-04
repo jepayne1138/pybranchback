@@ -1,6 +1,7 @@
 import os
 import hashlib
 import ctypes
+import argparse
 
 
 class VersionControl:
@@ -102,8 +103,12 @@ class VersionControl:
 
 
 def main():
-    path = os.path.normpath(os.path.join(os.getcwd(), '..', 'PathTest'))
-    vc = VersionControl(path)._create_tree_node()
+    parser = argparse.ArgumentParser(
+        description='Basic version control system'
+    )
+    parser.add_argument('root', type=str)
+    args = parser.parse_args()
+    VersionControl(args.root).snapshot()
 
 
 if __name__ == '__main__':
