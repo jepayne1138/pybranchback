@@ -1,10 +1,17 @@
 import os
-import posixpath
 import hashlib
 
 
 
 class VersionControl:
+    """Very basic version control in the same vein as git
+
+    Current structure:
+    +--.vc/
+    |  +--objects/
+    |     +--<first 2 hash chars>/
+    |        <remaining 38 harsh chars>
+    """
 
     VC_DIR = '.vc'
 
