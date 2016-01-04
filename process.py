@@ -8,10 +8,13 @@ class VersionControl:
 
     VC_DIR = '.vc'
 
-    def __init__(self, root):
+    def __init__(self, root, create=False):
         self.root = root
         self.vc_dir = os.path.join(self.root, self.VC_DIR)
         self.obj_dir = os.path.join(self.vc_dir, 'objects')
+
+        if create and not os.path.isdir(self.vc_dir):self.obj_dir
+            os.makedirs(self.obj_dir)  # Makes both root dir and objects dir
 
         # Check if a .vc folder is in the directory
         if not os.path.isdir(self.vc_dir):
