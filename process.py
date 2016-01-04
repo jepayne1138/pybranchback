@@ -3,8 +3,8 @@ import hashlib
 import ctypes
 
 
-
 class VersionControl:
+
     """Very basic version control in the same vein as git
 
     Current structure:
@@ -21,10 +21,10 @@ class VersionControl:
         self.vc_dir = os.path.join(self.root, self.VC_DIR)
         self.obj_dir = os.path.join(self.vc_dir, 'objects')
 
-        if create and not os.path.isdir(self.vc_dir):self.obj_dir
+        if create and not os.path.isdir(self.vc_dir):
             os.makedirs(self.obj_dir)  # Makes both root dir and objects dir
             # Make the new version control folder hidden
-            ctypes.windll.kernel32.SetFileAttributesW(path, 0x02)
+            ctypes.windll.kernel32.SetFileAttributesW(self.vc_dir, 0x02)
 
         # Check if a .vc folder is in the directory
         if not os.path.isdir(self.vc_dir):
@@ -40,7 +40,6 @@ class VersionControl:
 
     def snapshot(self):
         self._create_tree_node(self.root)
-
 
     def _create_tree_node(self, directory):
         # Validate the given root directory
@@ -71,7 +70,6 @@ class VersionControl:
         # Save the node contents to a vc object
         return self._save_node(node_content)
 
-
     def _create_blob_node(self, path):
         with open(path, 'rb') as input_file:
             node_content = input_file.read()
@@ -101,7 +99,6 @@ class VersionControl:
                 obj_file.write(bin_content)
 
         return digest
-
 
 
 def main():
