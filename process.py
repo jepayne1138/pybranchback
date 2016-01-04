@@ -1,5 +1,6 @@
 import os
 import hashlib
+import ctypes
 
 
 
@@ -22,6 +23,8 @@ class VersionControl:
 
         if create and not os.path.isdir(self.vc_dir):self.obj_dir
             os.makedirs(self.obj_dir)  # Makes both root dir and objects dir
+            # Make the new version control folder hidden
+            ctypes.windll.kernel32.SetFileAttributesW(path, 0x02)
 
         # Check if a .vc folder is in the directory
         if not os.path.isdir(self.vc_dir):
