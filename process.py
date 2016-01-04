@@ -38,10 +38,11 @@ class VersionControl:
                 'Version control integrity error: {}'.format(self.root)
             )
 
-    def create_tree_node(self, directory=None):
-        if directory is None:
-            directory = self.root
+    def snapshot(self):
+        self._create_tree_node(self.root)
 
+
+    def _create_tree_node(self, directory):
         # Validate the given root directory
         if not os.path.isdir(directory):
             raise ValueError('Not a directory: {}'.format(directory))
@@ -57,28 +58,28 @@ class VersionControl:
 
         # Recursively create nodes for subdirectories
         for subdir in directories:
-            node_hash = self.create_tree_node(os.path.join(directory, subdir))
+            node_hash = self._create_tree_node(os.path.join(directory, subdir))
             node_entries.append('{} {}'.format(node_hash, subdir))
 
         for file in files:
-            node_hash = self.create_blob_node(os.path.join(directory, file))
+            node_hash = self._create_blob_node(os.path.join(directory, file))
             node_entries.append('{} {}'.format(node_hash, file))
 
         # Join node entries into the node content
         node_content = '\n'.join(node_entries) + '\n'
 
         # Save the node contents to a vc object
-        return self.save_node(node_content)
+        return self._save_node(node_content)
 
 
-    def create_blob_node(self, path):
+    def _create_blob_node(self, path):
         with open(path, 'rb') as input_file:
             node_content = input_file.read()
 
         # Save the node contents to a vc object
-        return self.save_node(node_content)
+        return self._save_node(node_content)
 
-    def save_node(self, node_content):
+    def _save_node(self, node_content):
         # Get node content hash
         sha1 = hashlib.sha1()
         if type(node_content) is bytes:
@@ -105,7 +106,7 @@ class VersionControl:
 
 def main():
     path = os.path.normpath(os.path.join(os.getcwd(), '..', 'PathTest'))
-    vc = VersionControl(path).create_tree_node()
+    vc = VersionControl(path)._create_tree_node()
 
 
 if __name__ == '__main__':
