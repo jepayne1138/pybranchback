@@ -2,6 +2,7 @@ import os
 import hashlib
 import ctypes
 import argparse
+import pickle
 
 
 class VersionControl:
@@ -16,16 +17,17 @@ class VersionControl:
     """
 
     VC_DIR = '.vc'
+    BLOBMAP = 'blobmap'
 
     def __init__(self, root, create=False):
+        # Define paths to important locations
         self.root = root
         self.vc_dir = os.path.join(self.root, self.VC_DIR)
         self.obj_dir = os.path.join(self.vc_dir, 'objects')
+        self.blobmap = os.path.join(self.vc_dir, self.BLOBMAP)
 
         if create and not os.path.isdir(self.vc_dir):
-            os.makedirs(self.obj_dir)  # Makes both root dir and objects dir
-            # Make the new version control folder hidden
-            ctypes.windll.kernel32.SetFileAttributesW(self.vc_dir, 0x02)
+            self.create_directory()
 
         # Check if a .vc folder is in the directory
         if not os.path.isdir(self.vc_dir):
@@ -38,6 +40,15 @@ class VersionControl:
             raise ValueError(
                 'Version control integrity error: {}'.format(self.root)
             )
+
+    def create_directory(self):
+        """Creates a new version control directory"""
+        os.makedirs(self.obj_dir)  # Makes both root dir and objects dir
+        # Make the new version control folder hidden
+        ctypes.windll.kernel32.SetFileAttributesW(self.vc_dir, 0x02)
+
+        # Create new blobcache file
+        self._create_blobcache()
 
     def snapshot(self):
         self._create_tree_node(self.root)
@@ -100,6 +111,10 @@ class VersionControl:
                 obj_file.write(bin_content)
 
         return digest
+
+    def _create_blobcache(self):
+        with open(self.blobmap, 'wb') as blobfile:
+            pickle.dump({}, blobfile)
 
 
 def main():
