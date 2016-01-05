@@ -5,6 +5,7 @@ import ctypes
 import argparse
 import pickle
 import functools
+import difflib
 
 
 def root_directory(func):
@@ -131,8 +132,10 @@ class VersionControl:
 
     def _save_node(self, path, node_content):
         """Calculates a content hash and saves the content to a file"""
+        # Convert to bytes if necessary
+        bytes_content = self._byte_convert(node_content)
         # Get node content hash
-        digest = self._hash_diget(node_content)
+        digest = self._hash_diget(bytes_content)
 
         # Parse object directory and filename
         obj_dir = os.path.join(self.obj_dir, digest[:2])
@@ -143,21 +146,22 @@ class VersionControl:
 
         if not os.path.isfile(obj_path):
             with open(obj_path, 'wb') as obj_file:
-                obj_file.write(bin_content)
+                obj_file.write(bytes_content)
 
         self._update_hashmap(path, digest, node_content)
 
         return digest
 
+    def _byte_convert(self, payload):
+        if type(payload) is bytes:
+            return payload
+        # Try to encode if not bytes already
+        return payload.encode()
+
     def _hash_diget(self, payload):
         """Returns a hex digest for the hash of the given payload"""
         hasher = hashlib.sha1()
-        # Convert to binary content if necessary
-        if type(node_content) is bytes:
-            bin_content = node_content
-        else:
-            bin_content = node_content.encode()
-        hasher.update(bin_content)
+        hasher.update(payload)
         return hasher.hexdigest
 
     def _create_blobcache(self):
@@ -167,11 +171,11 @@ class VersionControl:
 
     def _update_hashmap(self, obj_path, obj_hash, obj_content):
         """Updates the hashmap with a pointer to the new file"""
-        if path in self.hashmap:
-            if self.hashmap[path] != obj_hash:
-                self._delta_compress(self.hashmap[path], obj_hash, obj_content)
+        if obj_path in self.hashmap:
+            if self.hashmap[obj_path] != obj_hash:
+                self._delta_compress(self.hashmap[obj_path], obj_hash, obj_content)
         # Update hashmap
-        self.hashmap[path] == obj_hash
+        self.hashmap[obj_path] == obj_hash
 
     def _delta_compress(self, old_hash, new_hash, new_content):
         """Compresses an old object file by replacing with a delta
@@ -185,7 +189,10 @@ class VersionControl:
         old_path = os.path.join(old_dir, old_hash[2:])
 
         # Calculate delta from new to old version
-        delta = ''
+        delta = generate_delta(
+            self._byte_convert(new_content),
+            self._read_object(old_hash)
+        )
 
         # Format delta contents
         delta_dict = {
@@ -204,7 +211,7 @@ class VersionControl:
         Recursively rebuilds any necessary files from their deltas
         """
         obj_dir = os.path.join(self.obj_dir, obj_hash[:2])
-        obj_path = os.path.join(old_dir, obj_hash[2:])
+        obj_path = os.path.join(obj_dir, obj_hash[2:])
 
         with open(obj_path, 'rb') as obj_file:
             content = obj_file.read()
@@ -214,14 +221,55 @@ class VersionControl:
             # Delta object must be rebuilt
             delta_dict = pickle.loads(content)
             origin_content = self._read_object(delta_dict['origin'])
-            return self._rebuild_content(origin_content, delta_dict['delta'])
+            return rebuild_delta(origin_content, delta_dict['delta'])
 
         # If object is not a delta, simply return it's content
         return content
 
-    def _rebuild_content(self, origin, delta):
-        """Rebuilds object content from origin data and a delta"""
-        return ''
+
+def generate_delta(bytes1, bytes2):
+    """Returns a series of instruction for turning bytes1 into bytes2
+
+    Code mappings:
+      equal = 0
+      delete = 1
+      insert = 2
+      replace = 3
+    """
+    opcodes = difflib.SequenceMatcher(None, bytes1, bytes2).get_opcodes()
+    ret_diff = []
+    for code, s1, e1, s2, e2 in opcodes:
+        if code == 'equal':
+            ret_diff.append((0, s1, e1, None))
+        if code == 'delete':
+            ret_diff.append((1, s1, e1, None))
+        if code == 'insert':
+            ret_diff.append((2, s1, e1, bytes2[s2:e2]))
+        if code == 'replace':
+            ret_diff.append((3, s1, e1, bytes2[s2:e2]))
+    return ret_diff
+
+
+def rebuild_delta(base, delta):
+    """Rebuilds a byte string from a base and delta
+
+    Code mappings:
+      equal = 0
+      delete = 1
+      insert = 2
+      replace = 3
+    """
+    rebuild = []
+    for code, start, end, value in delta:
+        if code == 0:
+            rebuild.append(base[start:end])
+        if code == 1:
+            pass
+        if code == 2:
+            rebuild.append(value)
+        if code == 3:
+            rebuild.append(value)
+    return b''.join(rebuild)
 
 
 def main():
