@@ -99,10 +99,13 @@ class VersionControl:
     def snapshot(self):
         """Takes a snapshot of the the current status of the directory"""
         top_hash = self._create_tree_node('.')
+        self._update_branch_head(top_hash)
+
+    def _update_branch_head(self, new_hash):
         with open(self.head_file, 'r') as head_file:
             branch_name = head_file.read().strip()
         with open('refs/heads/{}'.format(branch_name), 'w') as branch_file:
-            branch_file.write(top_hash)
+            branch_file.write(new_hash)
 
     def _create_tree_node(self, directory):
         """Recursive function creates tree nodes for current snapshot"""
