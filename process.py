@@ -39,6 +39,11 @@ class VersionControl:
     |  +--objects/
     |     +--<first 2 hash chars>/
     |        <remaining 38 harsh chars>
+    |  +--refs/
+    |     +--heads/
+    |        master
+    |  hashmap
+    |  HEAD
     """
 
     VC_DIR = '.vc'
@@ -57,25 +62,28 @@ class VersionControl:
         # Define paths to important locations
         self.vc_dir = self.VC_DIR
         self.obj_dir = os.path.join(self.vc_dir, 'objects')
-        self.hashmap_path = os.path.join(self.vc_dir, self.HASHMAP)
-
-        if self.create and not os.path.isdir(self.vc_dir):
-            self.create_directory()
+        self.ref_dir = os.path.join(self.vc_dir, 'refs')
+        self.head_dir = os.path.join(self.ref_dir, 'heads')
+        self.hashmap_path = os.path.join(self.vc_dir, 'hashmap')
+        self.head_path = os.path.join(self.vc_dir, 'HEAD')
 
         # Check if a .vc folder is in the directory
         if not os.path.isdir(self.vc_dir):
-            raise ValueError(
-                'Not a version controlled directory: {}'.format(self.root)
-            )
-
-        # Check for vc integrity
-        if not os.path.isdir(self.obj_dir):
-            raise ValueError(
-                'Version control integrity error: {}'.format(self.root)
-            )
+            # Not a version controlled directory
+            if self.create:
+                # Create a new version control instance
+                self.create_directory()
+            else:
+                raise ValueError(
+                    'Not a version controlled directory: {}'.format(self.root)
+                )
 
         # Define helper attributes
         self.hashmap = {}
+
+        # Set default HEAD path
+        with open(self.head_path, 'w') as head_file:
+            head_file.write('master')
 
     @root_directory
     def create_directory(self):
@@ -90,7 +98,11 @@ class VersionControl:
     @root_directory
     def snapshot(self):
         """Takes a snapshot of the the current status of the directory"""
-        self._create_tree_node('.')
+        top_hash = self._create_tree_node('.')
+        with open(self.head_file, 'r') as head_file:
+            branch_name = head_file.read().strip()
+        with open('refs/heads/{}'.format(branch_name), 'w') as branch_file:
+            branch_file.write(top_hash)
 
     def _create_tree_node(self, directory):
         """Recursive function creates tree nodes for current snapshot"""
