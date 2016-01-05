@@ -8,6 +8,7 @@ import functools
 
 
 def root_directory(func):
+    """Decorates VersionControl methods to temporarily use root directory"""
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         # Save current working directory
@@ -24,6 +25,7 @@ def root_directory(func):
 
 
 def posixjoin(*args):
+    """Returns a normalized path of posix joined arguments"""
     return posixpath.normpath(posixpath.join(*args))
 
 
@@ -50,7 +52,7 @@ class VersionControl:
 
     @root_directory  # Change cwd to build proper paths
     def _initialize(self):
-        print(os.getcwd())
+        """Initialization of important paths and version validation"""
         # Define paths to important locations
         self.vc_dir = self.VC_DIR
         self.obj_dir = os.path.join(self.vc_dir, 'objects')
@@ -83,9 +85,11 @@ class VersionControl:
 
     @root_directory
     def snapshot(self):
+        """Takes a snapshot of the the current status of the directory"""
         self._create_tree_node('.')
 
     def _create_tree_node(self, directory):
+        """Recursive function creates tree nodes for current snapshot"""
         # Validate the given root directory
         if not os.path.isdir(directory):
             raise ValueError('Not a directory: {}'.format(directory))
@@ -115,6 +119,7 @@ class VersionControl:
         return self._save_node(node_content)
 
     def _create_blob_node(self, path):
+        """Creates nodes for files in the current snapshot"""
         with open(path, 'rb') as input_file:
             node_content = input_file.read()
 
@@ -122,6 +127,7 @@ class VersionControl:
         return self._save_node(node_content)
 
     def _save_node(self, node_content):
+        """Calculates a content hash and saves the content to a file"""
         # Get node content hash
         sha1 = hashlib.sha1()
         if type(node_content) is bytes:
@@ -145,11 +151,13 @@ class VersionControl:
         return digest
 
     def _create_blobcache(self):
+        """Creates a new empty file that will store current file hashes"""
         with open(self.blobmap, 'wb') as blobfile:
             pickle.dump({}, blobfile)
 
 
 def main():
+    """Tests the version control program with a basic test"""
     parser = argparse.ArgumentParser(
         description='Basic version control system'
     )
