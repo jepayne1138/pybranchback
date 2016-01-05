@@ -161,9 +161,16 @@ def main():
     parser = argparse.ArgumentParser(
         description='Basic version control system'
     )
-    parser.add_argument('root', type=str)
+    parser.add_argument(
+        'root', type=str,
+        help='Directory to be version controlled'
+    )
+    parser.add_argument(
+        '--create', '-c', action='store_true',
+        help='Create a new version control repo if not existent'
+    )
     args = parser.parse_args()
-    VersionControl(args.root).snapshot()
+    VersionControl(args.root, create=args.create).snapshot()
 
 
 if __name__ == '__main__':
