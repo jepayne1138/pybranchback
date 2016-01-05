@@ -1,8 +1,30 @@
 import os
+import posixpath
 import hashlib
 import ctypes
 import argparse
 import pickle
+import functools
+
+
+def root_directory(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        # Save current working directory
+        orig_dir = os.getcwd()
+        # Get root directory from the first `self` parameter
+        # (This means this should only decorate VersionControl methods)
+        os.chdir(args[0].root)
+        # Call wrapped method
+        ret_val = func(*args, **kwargs)
+        # Restore original working directory
+        os.chdir(orig_dir)
+        return ret_val
+    return wrapper
+
+
+def posixjoin(*args):
+    return posixpath.normpath(posixpath.join(*args))
 
 
 class VersionControl:
@@ -20,13 +42,21 @@ class VersionControl:
     BLOBMAP = 'blobmap'
 
     def __init__(self, root, create=False):
-        # Define paths to important locations
+        """Simple store all arguments and call main initialization method"""
         self.root = root
-        self.vc_dir = os.path.join(self.root, self.VC_DIR)
+        self.create = create
+
+        self._initialize()
+
+    @root_directory  # Change cwd to build proper paths
+    def _initialize(self):
+        print(os.getcwd())
+        # Define paths to important locations
+        self.vc_dir = self.VC_DIR
         self.obj_dir = os.path.join(self.vc_dir, 'objects')
         self.blobmap = os.path.join(self.vc_dir, self.BLOBMAP)
 
-        if create and not os.path.isdir(self.vc_dir):
+        if self.create and not os.path.isdir(self.vc_dir):
             self.create_directory()
 
         # Check if a .vc folder is in the directory
@@ -41,6 +71,7 @@ class VersionControl:
                 'Version control integrity error: {}'.format(self.root)
             )
 
+    @root_directory
     def create_directory(self):
         """Creates a new version control directory"""
         os.makedirs(self.obj_dir)  # Makes both root dir and objects dir
@@ -50,8 +81,9 @@ class VersionControl:
         # Create new blobcache file
         self._create_blobcache()
 
+    @root_directory
     def snapshot(self):
-        self._create_tree_node(self.root)
+        self._create_tree_node('.')
 
     def _create_tree_node(self, directory):
         # Validate the given root directory
@@ -69,11 +101,11 @@ class VersionControl:
 
         # Recursively create nodes for subdirectories
         for subdir in directories:
-            node_hash = self._create_tree_node(os.path.join(directory, subdir))
+            node_hash = self._create_tree_node(posixjoin(directory, subdir))
             node_entries.append('{} {}'.format(node_hash, subdir))
 
         for file in files:
-            node_hash = self._create_blob_node(os.path.join(directory, file))
+            node_hash = self._create_blob_node(posixjoin(directory, file))
             node_entries.append('{} {}'.format(node_hash, file))
 
         # Join node entries into the node content
