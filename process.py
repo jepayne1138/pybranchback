@@ -72,6 +72,23 @@ class VersionControl:
 
         self._initialize()
 
+    @root_directory
+    def snapshot(self):
+        """Takes a snapshot of the the current status of the directory"""
+        top_hash = self._create_tree_node('.')
+        self._update_branch_head(top_hash)
+        self._insert_snapshot(top_hash)
+
+    def current_branch(self):
+        """Returns the name of the current branch"""
+        with open(os.path.join(self.root, self.head_path), 'r') as head_file:
+            return head_file.read().strip()
+
+    def change_branch(self, branch):
+        """Sets the branch to the new name then updates all files"""
+        self._set_branch(branch)
+        self._update_files()
+
     @root_directory  # Change cwd to build proper paths
     def _initialize(self):
         """Initialization of important paths and version validation"""
@@ -89,7 +106,7 @@ class VersionControl:
             # Not a version controlled directory
             if self.create:
                 # Create a new version control instance
-                self.create_directory()
+                self._create_directory()
             else:
                 raise ValueError(
                     'Not a version controlled directory: {}'.format(self.root)
@@ -99,11 +116,15 @@ class VersionControl:
         self.hashmap = {}
 
         # Set default HEAD path
+        self._set_branch('master')
+
+    def _set_branch(self, branch_name):
+        """Sets the current branch to the given name"""
         with open(self.head_path, 'w') as head_file:
-            head_file.write('master')
+            head_file.write(branch_name)
 
     @root_directory
-    def create_directory(self):
+    def _create_directory(self):
         """Creates a new version control directory"""
         # Explicitly create all directories
         os.makedirs(self.vc_dir)
@@ -117,22 +138,18 @@ class VersionControl:
         self._create_hashmap()  # Create new blobcache file
         self._create_snapshots()  # Create new snapshots database
 
-    @root_directory
-    def snapshot(self):
-        """Takes a snapshot of the the current status of the directory"""
-        top_hash = self._create_tree_node('.')
-        self._update_branch_head(top_hash)
-        self._insert_snapshot(top_hash)
-
     def _update_branch_head(self, new_hash):
-        branch_name = self._get_current_branch()
+        branch_name = self.current_branch()
         branch_path = os.path.join(self.head_dir, branch_name)
         with open(branch_path, 'w') as branch_file:
             branch_file.write(new_hash)
 
-    def _get_current_branch(self):
-        with open(self.head_path, 'r') as head_file:
-            return head_file.read().strip()
+    def _get_branch_head(self):
+        """Returns the current hash for the current branch"""
+        branch_name = self.current_branch()
+        branch_path = os.path.join(self.head_dir, branch_name)
+        with open(branch_path, 'r') as branch_file:
+            return branch_file.read().strip()
 
     def _create_tree_node(self, directory):
         """Recursive function creates tree nodes for current snapshot"""
@@ -221,7 +238,7 @@ class VersionControl:
         """Updates snapshots database with snapshot data"""
         data = {
             'hash': obj_hash,
-            'branch': self._get_current_branch(),
+            'branch': self.current_branch(),
             'label': label,
             'message': message,
             'user': user,
@@ -286,6 +303,10 @@ class VersionControl:
 
         # If object is not a delta, simply return it's content
         return content
+
+    def _update_files(self, snapshot_hash):
+        """Updates directory with the files for the given snapshot"""
+        raise NotImplementedError()
 
 
 def generate_delta(bytes1, bytes2):
