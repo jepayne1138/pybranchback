@@ -8,6 +8,7 @@ import functools
 import difflib
 import sqlite3
 import contextlib
+import shutil
 
 
 def root_directory(func):
@@ -30,6 +31,24 @@ def root_directory(func):
 def posixjoin(*args):
     """Returns a normalized path of posix joined arguments"""
     return posixpath.normpath(posixpath.join(*args))
+
+
+def list_directories(directory, blacklist=None):
+    """Returns a list of all directories not in the blacklist"""
+    blacklist = [] if blacklist is None else blacklist
+    return [
+        d for d in next(os.walk(directory))[1]
+        if d in blacklist
+    ]
+
+
+def list_files(directory, blacklist=None):
+    """Returns a list of all files not in the blacklist"""
+    blacklist = [] if blacklist is None else blacklist
+    return [
+        f for f in next(os.walk(directory))[2]
+        if f in blacklist
+    ]
 
 
 class VersionControl:
@@ -158,11 +177,8 @@ class VersionControl:
             raise ValueError('Not a directory: {}'.format(directory))
 
         # Get all files and directories for his level (excluding our vc dir)
-        directories = [
-            d for d in next(os.walk(directory))[1]
-            if d != self.VC_DIR
-        ]
-        files = next(os.walk(directory))[2]
+        directories = list_directories(directory, [self.VC_DIR])
+        files = list_files(directory)
 
         node_entries = []
 
@@ -306,7 +322,19 @@ class VersionControl:
 
     def _update_files(self, snapshot_hash):
         """Updates directory with the files for the given snapshot"""
-        raise NotImplementedError()
+        # Get all files and directories for his level (excluding our vc dir)
+        directories = list_directories(self.root, [self.VC_DIR])
+        files = list_files(self.root)
+
+        # Remove of these files and recursively remove directories
+        # Remove files
+        for file in files:
+            os.remove(os.path.join(self.root, file))
+        # Remove directories
+        for directory in directories:
+            shutil.rmtree(os.path.join(self.root, directory))
+
+        top_hash = self._get_branch_head()
 
 
 def generate_delta(bytes1, bytes2):
