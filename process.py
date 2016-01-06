@@ -38,7 +38,7 @@ def list_directories(directory, blacklist=None):
     blacklist = [] if blacklist is None else blacklist
     return [
         d for d in next(os.walk(directory))[1]
-        if d in blacklist
+        if d not in blacklist
     ]
 
 
@@ -47,7 +47,7 @@ def list_files(directory, blacklist=None):
     blacklist = [] if blacklist is None else blacklist
     return [
         f for f in next(os.walk(directory))[2]
-        if f in blacklist
+        if f not in blacklist
     ]
 
 
@@ -185,11 +185,11 @@ class VersionControl:
         # Recursively create nodes for subdirectories
         for subdir in directories:
             node_hash = self._create_tree_node(posixjoin(directory, subdir))
-            node_entries.append('{} {}'.format(node_hash, subdir))
+            node_entries.append('tree {} {}'.format(node_hash, subdir))
 
         for file in files:
             node_hash = self._create_blob_node(posixjoin(directory, file))
-            node_entries.append('{} {}'.format(node_hash, file))
+            node_entries.append('blob {} {}'.format(node_hash, file))
 
         # Join node entries into the node content
         node_content = '\n'.join(node_entries) + '\n'
@@ -335,6 +335,31 @@ class VersionControl:
             shutil.rmtree(os.path.join(self.root, directory))
 
         top_hash = self._get_branch_head()
+        self._build_tree(top_hash, self.root)
+
+    def _build_tree(self, node_hash, current_dir):
+        """Recursive function to rebuild file structure for objects"""
+        content = self._read_object(node_hash).decode().rstrip()
+
+        for line in content.split('\n'):
+            obj_type, obj_hash, obj_name = self._parse_tree_line(line)
+            new_path = os.path.join(current_dir, obj_name)
+
+            # Process each type of object
+            if obj_type == 'tree':
+                # Make the directory
+                os.makedirs(new_path)
+                # Make the directory
+                self._build_tree(obj_hash, new_path)
+            if obj_type == 'blob':
+                # Rebuild the file
+                with open(new_path, 'wb') as obj_file:
+                    obj_file.write(self._read_oject(obj_hash))
+
+    def _parse_tree_line(self, line):
+        """Parses each line in a tree object"""
+        clean = line.rstrip()
+        return clean[:5].rstrip(), clean[5:46].rstrip(), clean[46:].rstrip()
 
 
 def generate_delta(bytes1, bytes2):
