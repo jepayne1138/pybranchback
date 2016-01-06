@@ -103,6 +103,25 @@ class VersionControl:
         return top_hash
 
     @root_directory
+    def new_branch(self, id, name):
+        """Creates a new branch and switches to it"""
+        # Temporary code to convert and id into a hash
+        with contextlib.closing(sqlite3.connect(self.ssdb_path)) as con:
+            with contextlib.closing(con.cursor()) as cur:
+                cur.execute("""
+                    SELECT hash FROM snapshots WHERE id=?
+                """, (id,))
+                checkout_hash = cur.fetchone()[0]
+
+        # Set branch
+        self._set_branch(name)
+        self._update_branch_head(checkout_hash)
+
+        # Revert to a given hash
+        self._update_files()
+        self._insert_snapshot(checkout_hash)
+
+    @root_directory
     def list_snapshots(self):
         with contextlib.closing(sqlite3.connect(self.ssdb_path)) as con:
             con.row_factory = sqlite3.Row
@@ -115,6 +134,7 @@ class VersionControl:
         with open(os.path.join(self.root, self.head_path), 'r') as head_file:
             return head_file.read().strip()
 
+    @root_directory
     def change_branch(self, branch):
         """Sets the branch to the new name then updates all files"""
         self._set_branch(branch)
@@ -146,9 +166,7 @@ class VersionControl:
         # Define helper attributes
         self.hashmap = {}
 
-        # Set default HEAD path
-        self._set_branch('master')
-
+    @root_directory
     def _set_branch(self, branch_name):
         """Sets the current branch to the given name"""
         with open(self.head_path, 'w') as head_file:
@@ -168,6 +186,8 @@ class VersionControl:
         # Create files
         self._create_hashmap()  # Create new blobcache file
         self._create_snapshots()  # Create new snapshots database
+        # Set default HEAD path
+        self._set_branch('master')
 
     def _update_branch_head(self, new_hash):
         branch_name = self.current_branch()
@@ -175,12 +195,17 @@ class VersionControl:
         with open(branch_path, 'w') as branch_file:
             branch_file.write(new_hash)
 
+    @root_directory
     def _get_branch_head(self):
         """Returns the current hash for the current branch"""
         branch_name = self.current_branch()
         branch_path = os.path.join(self.head_dir, branch_name)
-        with open(branch_path, 'r') as branch_file:
-            return branch_file.read().strip()
+        try:
+            with open(branch_path, 'r') as branch_file:
+                return branch_file.read().strip()
+        except FileNotFoundError:
+            # The branch file does not exist yet (new repo)
+            return None
 
     def _create_tree_node(self, directory):
         """Recursive function creates tree nodes for current snapshot"""
@@ -332,7 +357,7 @@ class VersionControl:
         # If object is not a delta, simply return it's content
         return content
 
-    def _update_files(self, snapshot_hash):
+    def _update_files(self):
         """Updates directory with the files for the given snapshot"""
         # Get all files and directories for his level (excluding our vc dir)
         directories = list_directories(self.root, [self.VC_DIR])
@@ -366,7 +391,7 @@ class VersionControl:
             if obj_type == 'blob':
                 # Rebuild the file
                 with open(new_path, 'wb') as obj_file:
-                    obj_file.write(self._read_oject(obj_hash))
+                    obj_file.write(self._read_object(obj_hash))
 
     def _parse_tree_line(self, line):
         """Parses each line in a tree object"""
@@ -437,7 +462,7 @@ def main():
         help='Create a new version control repo if not existent'
     )
     parser.add_argument(
-        '--checkout', '-c', type=int,
+        '--checkout', '-c', type=int, default=0,
         help='Checks out the snapshot with the given id'
     )
     parser.add_argument(
@@ -445,20 +470,33 @@ def main():
         help='Lists options for the given command'
     )
     args = parser.parse_args()
-    vc = VersionControl(args.root, create=args.create)
+    vc = VersionControl(args.root, create=args.new)
 
     if args.command == 'snapshot':
         if args.list:
-            base_string = '{id: <3} {hash: <40} {branch: <10} {timestamp}'
+            # Get current hash so it can be marked
+            cur_hash = vc._get_branch_head()
+            cur_branch = vc.current_branch()
+
+            base_string = '{cur}{id: <3} {hash: <40} {branch: <10} {timestamp}'
             header_string = base_string.format(
-                id='id', hash='hash', branch='branch', timestamp='timestamp'
+                cur=' ', id='id', hash='hash', branch='branch', timestamp='timestamp'
             )
             print('\n' + header_string)
             print('-' * len(header_string))
             for snapshot in vc.list_snapshots():
-                print(base_string.format(**snapshot))
+                current = '*' if (snapshot['hash'] == cur_hash and snapshot['branch'] == cur_branch) else ' '
+                print(base_string.format(cur=current, **snapshot))
         else:
             print(vc.snapshot())
+    if args.command[:6] == 'branch':
+        _, sid, name = args.command.split(':')
+        vc.new_branch(sid, name)
+        print('New branch[{}]: {}'.format(sid, name))
+    if args.command[:6] == 'switch':
+        _, branch_name = args.command.split(':')
+        vc.change_branch(branch_name)
+        print('Switched to branch: {}'.format(branch_name))
 
 if __name__ == '__main__':
     main()
