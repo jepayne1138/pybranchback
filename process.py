@@ -96,6 +96,8 @@ class VersionControl:
     def snapshot(self):
         """Takes a snapshot of the the current status of the directory"""
         top_hash = self._create_tree_node('.')
+        # Save updated hashmap
+        self._save_hashmap()
         if self._get_branch_head() == top_hash:
             return 'No changes to repository'
         self._update_branch_head(top_hash)
@@ -152,6 +154,9 @@ class VersionControl:
         self.head_path = os.path.join(self.vc_dir, 'HEAD')
         self.ssdb_path = os.path.join(self.vc_dir, 'snapshots')
 
+        # Define helper attributes
+        self.hashmap = {}
+
         # Check if a .vc folder is in the directory
         if not os.path.isdir(self.vc_dir):
             # Not a version controlled directory
@@ -163,8 +168,8 @@ class VersionControl:
                     'Not a version controlled directory: {}'.format(self.root)
                 )
 
-        # Define helper attributes
-        self.hashmap = {}
+        # Load existing hashmap
+        self._load_hashmap()
 
     @root_directory
     def _set_branch(self, branch_name):
@@ -184,7 +189,7 @@ class VersionControl:
         ctypes.windll.kernel32.SetFileAttributesW(self.vc_dir, 0x02)
 
         # Create files
-        self._create_hashmap()  # Create new blobcache file
+        self._save_hashmap()  # Create new blobcache file
         self._create_snapshots()  # Create new snapshots database
         # Set default HEAD path
         self._set_branch('master')
@@ -249,6 +254,12 @@ class VersionControl:
         # Get node content hash
         digest = self._hash_diget(bytes_content)
 
+        # print(path)
+        # if path in self.hashmap:
+        #     print((path in self.hashmap))
+        # else:
+        #     print(self.hashmap)
+
         # Parse object directory and filename
         obj_dir = os.path.join(self.obj_dir, digest[:2])
         obj_path = os.path.join(obj_dir, digest[2:])
@@ -260,7 +271,10 @@ class VersionControl:
             with open(obj_path, 'wb') as obj_file:
                 obj_file.write(bytes_content)
 
-        self._update_hashmap(path, digest, node_content)
+        self._compress_old_object(path, digest, node_content)
+
+        # Update hashmap
+        self.hashmap[path] = digest
 
         return digest
 
@@ -276,10 +290,15 @@ class VersionControl:
         hasher.update(payload)
         return hasher.hexdigest()
 
-    def _create_hashmap(self):
-        """Creates a new empty file that will store current file hashes"""
-        with open(self.hashmap_path, 'wb') as hashmap_file:
-            pickle.dump({}, hashmap_file)
+    def _save_hashmap(self):
+        """Saves the current state of the hashmap"""
+        with open(self.hashmap_path, 'wb') as hash_file:
+            pickle.dump(self.hashmap, hash_file)
+
+    def _load_hashmap(self):
+        """Loads a saved hashmap from a file"""
+        with open(self.hashmap_path, 'rb') as hash_file:
+            self.hashmap = pickle.load(hash_file)
 
     def _create_snapshots(self):
         """Create a new database for storing snapshot information"""
@@ -300,13 +319,11 @@ class VersionControl:
             with con as cur:
                 cur.execute(self.INSERT_SNAPSHOT_DB, data)
 
-    def _update_hashmap(self, obj_path, obj_hash, obj_content):
-        """Updates the hashmap with a pointer to the new file"""
+    def _compress_old_object(self, obj_path, obj_hash, obj_content):
+        """Compresses old objects"""
         if obj_path in self.hashmap:
             if self.hashmap[obj_path] != obj_hash:
                 self._delta_compress(self.hashmap[obj_path], obj_hash, obj_content)
-        # Update hashmap
-        self.hashmap[obj_path] = obj_hash
 
     def _delta_compress(self, old_hash, new_hash, new_content):
         """Compresses an old object file by replacing with a delta
@@ -374,13 +391,13 @@ class VersionControl:
         top_hash = self._get_branch_head()
         self._build_tree(top_hash, self.root)
 
-    def _build_tree(self, node_hash, current_dir):
+    def _build_tree(self, node_hash, current_path):
         """Recursive function to rebuild file structure for objects"""
         content = self._read_object(node_hash).decode().rstrip()
 
         for line in content.split('\n'):
             obj_type, obj_hash, obj_name = self._parse_tree_line(line)
-            new_path = os.path.join(current_dir, obj_name)
+            new_path = os.path.join(current_path, obj_name)
 
             # Process each type of object
             if obj_type == 'tree':
