@@ -83,6 +83,7 @@ class VersionControl:
         INSERT INTO snapshots (hash, branch, label, message, user)
         VALUES (:hash, :branch, :label, :message, :user)
     """
+    SELECT_SNAPSHOT_DB = """SELECT * FROM snapshots"""
 
     def __init__(self, root, create=False):
         """Simple store all arguments and call main initialization method"""
@@ -95,8 +96,19 @@ class VersionControl:
     def snapshot(self):
         """Takes a snapshot of the the current status of the directory"""
         top_hash = self._create_tree_node('.')
+        if self._get_branch_head() == top_hash:
+            return 'No changes to repository'
         self._update_branch_head(top_hash)
         self._insert_snapshot(top_hash)
+        return top_hash
+
+    @root_directory
+    def list_snapshots(self):
+        with contextlib.closing(sqlite3.connect(self.ssdb_path)) as con:
+            con.row_factory = sqlite3.Row
+            with contextlib.closing(con.cursor()) as cur:
+                cur.execute(self.SELECT_SNAPSHOT_DB)
+                return cur.fetchall()
 
     def current_branch(self):
         """Returns the name of the current branch"""
@@ -417,12 +429,36 @@ def main():
         help='Directory to be version controlled'
     )
     parser.add_argument(
-        '--create', '-c', action='store_true',
+        'command', type=str,
+        help='Command to be run'
+    )
+    parser.add_argument(
+        '--new', '-n', action='store_true',
         help='Create a new version control repo if not existent'
     )
+    parser.add_argument(
+        '--checkout', '-c', type=int,
+        help='Checks out the snapshot with the given id'
+    )
+    parser.add_argument(
+        '--list', '-l', action='store_true',
+        help='Lists options for the given command'
+    )
     args = parser.parse_args()
-    VersionControl(args.root, create=args.create).snapshot()
+    vc = VersionControl(args.root, create=args.create)
 
+    if args.command == 'snapshot':
+        if args.list:
+            base_string = '{id: <3} {hash: <40} {branch: <10} {timestamp}'
+            header_string = base_string.format(
+                id='id', hash='hash', branch='branch', timestamp='timestamp'
+            )
+            print('\n' + header_string)
+            print('-' * len(header_string))
+            for snapshot in vc.list_snapshots():
+                print(base_string.format(**snapshot))
+        else:
+            print(vc.snapshot())
 
 if __name__ == '__main__':
     main()
