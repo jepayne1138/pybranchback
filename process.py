@@ -6,6 +6,8 @@ import argparse
 import pickle
 import functools
 import difflib
+import sqlite3
+import contextlib
 
 
 def root_directory(func):
@@ -47,7 +49,21 @@ class VersionControl:
     """
 
     VC_DIR = '.vc'
-    HASHMAP = 'hashmap'
+    CREATE_SNAPSHOT_DB = """
+        CREATE TABLE snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            hash TEXT NOT NULL,
+            branch TEXT NOT NULL,
+            label TEXT,
+            message TEXT,
+            user TEXT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+        );
+    """
+    INSERT_SNAPSHOT_DB = """
+        INSERT INTO snapshots (hash, branch, label, message, user)
+        VALUES (:hash, :branch, :label, :message, :user)
+    """
 
     def __init__(self, root, create=False):
         """Simple store all arguments and call main initialization method"""
@@ -66,6 +82,7 @@ class VersionControl:
         self.head_dir = os.path.join(self.ref_dir, 'heads')
         self.hashmap_path = os.path.join(self.vc_dir, 'hashmap')
         self.head_path = os.path.join(self.vc_dir, 'HEAD')
+        self.ssdb_path = os.path.join(self.vc_dir, 'snapshots')
 
         # Check if a .vc folder is in the directory
         if not os.path.isdir(self.vc_dir):
@@ -88,24 +105,34 @@ class VersionControl:
     @root_directory
     def create_directory(self):
         """Creates a new version control directory"""
-        os.makedirs(self.obj_dir)  # Makes both root dir and objects dir
+        # Explicitly create all directories
+        os.makedirs(self.vc_dir)
+        os.makedirs(self.obj_dir)
+        os.makedirs(self.ref_dir)
+        os.makedirs(self.head_dir)
         # Make the new version control folder hidden
         ctypes.windll.kernel32.SetFileAttributesW(self.vc_dir, 0x02)
 
-        # Create new blobcache file
-        self._create_blobcache()
+        # Create files
+        self._create_hashmap()  # Create new blobcache file
+        self._create_snapshots()  # Create new snapshots database
 
     @root_directory
     def snapshot(self):
         """Takes a snapshot of the the current status of the directory"""
         top_hash = self._create_tree_node('.')
         self._update_branch_head(top_hash)
+        self._insert_snapshot(top_hash)
 
     def _update_branch_head(self, new_hash):
-        with open(self.head_file, 'r') as head_file:
-            branch_name = head_file.read().strip()
-        with open('refs/heads/{}'.format(branch_name), 'w') as branch_file:
+        branch_name = self._get_current_branch()
+        branch_path = os.path.join(self.head_dir, branch_name)
+        with open(branch_path, 'w') as branch_file:
             branch_file.write(new_hash)
+
+    def _get_current_branch(self):
+        with open(self.head_path, 'r') as head_file:
+            return head_file.read().strip()
 
     def _create_tree_node(self, directory):
         """Recursive function creates tree nodes for current snapshot"""
@@ -177,12 +204,31 @@ class VersionControl:
         """Returns a hex digest for the hash of the given payload"""
         hasher = hashlib.sha1()
         hasher.update(payload)
-        return hasher.hexdigest
+        return hasher.hexdigest()
 
-    def _create_blobcache(self):
+    def _create_hashmap(self):
         """Creates a new empty file that will store current file hashes"""
         with open(self.hashmap_path, 'wb') as hashmap_file:
             pickle.dump({}, hashmap_file)
+
+    def _create_snapshots(self):
+        """Create a new database for storing snapshot information"""
+        with contextlib.closing(sqlite3.connect(self.ssdb_path)) as con:
+            with con as cur:
+                cur.execute(self.CREATE_SNAPSHOT_DB)
+
+    def _insert_snapshot(self, obj_hash, label='', message='', user=''):
+        """Updates snapshots database with snapshot data"""
+        data = {
+            'hash': obj_hash,
+            'branch': self._get_current_branch(),
+            'label': label,
+            'message': message,
+            'user': user,
+        }
+        with contextlib.closing(sqlite3.connect(self.ssdb_path)) as con:
+            with con as cur:
+                cur.execute(self.INSERT_SNAPSHOT_DB, data)
 
     def _update_hashmap(self, obj_path, obj_hash, obj_content):
         """Updates the hashmap with a pointer to the new file"""
@@ -190,7 +236,7 @@ class VersionControl:
             if self.hashmap[obj_path] != obj_hash:
                 self._delta_compress(self.hashmap[obj_path], obj_hash, obj_content)
         # Update hashmap
-        self.hashmap[obj_path] == obj_hash
+        self.hashmap[obj_path] = obj_hash
 
     def _delta_compress(self, old_hash, new_hash, new_content):
         """Compresses an old object file by replacing with a delta
