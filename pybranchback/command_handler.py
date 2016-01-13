@@ -1,4 +1,6 @@
 import argparse
+import os
+from pybranchback.repository import Repository
 
 
 def parse_arguments():
@@ -81,9 +83,10 @@ def process_commands():
     # Parse and handle each different command
     args = parse_arguments()
 
-    # Process 'init'
-    if args.command == 'init':
-        pass
+    # Get repository instance and process 'init' command
+    repo = Repository(
+        os.getcwd(), create=(args.command == 'init')
+    )
 
     # Process 'save'
     if args.command == 'save':
