@@ -65,6 +65,7 @@ class VersionControl:
     |        master
     |  hashmap
     |  HEAD
+    |  snapshots
     """
 
     VC_DIR = '.vc'
