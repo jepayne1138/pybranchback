@@ -270,10 +270,6 @@ class Repository:
 
         # Get paths to the reference file
         ref_hash = self.objhashcache[obj_path]
-        old_dir = self._join_root(
-            os.path.join(self.DIRS['objects'], ref_hash[:2])
-        )
-        old_path = os.path.join(old_dir, ref_hash[2:])
 
         # Calculate delta from the reference version to the new version
         patch = bindifflib.diff(
@@ -291,7 +287,7 @@ class Repository:
         Recursively rebuilds any necessary files from their deltas
         """
         obj_dir = self._join_root(
-            os.path.join(self.DIRS['objects'], ref_hash[:2])
+            os.path.join(self.DIRS['objects'], obj_hash[:2])
         )
         obj_path = os.path.join(obj_dir, obj_hash[2:])
 
