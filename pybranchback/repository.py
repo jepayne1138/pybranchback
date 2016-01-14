@@ -85,6 +85,11 @@ class Repository:
         # Create the snapshots database
         ssdb.execute(self.FILES['snapshots'], ssdb.CREATE)
 
+    def current_branch(self):
+        """Returns the name of the current branch"""
+        with open(self._join_root(self.FILES['head']), 'r') as head_file:
+            return head_file.read().strip()
+
     def _join_root(self, rel_path):
         """Return a joined relative path with the instance root directory"""
         return os.path.join(self.root_dir, rel_path)
@@ -103,6 +108,17 @@ class Repository:
         """Loads a saved hashmap from a file"""
         with open(self.FILES['objhashcache'], 'rb') as hash_file:
             self.objhashcache = pickle.load(hash_file)
+
+    def _update_branch_head(self, new_hash, branch=None):
+        """Updates a branch with a new hash address to a head snapshot"""
+        branch = self.current_branch() if branch is None else branch
+
+        # Construct path to the reference file
+        ref_path = self._join_root(os.path.join(self.DIRS['heads'], branch))
+
+        # Overwrite the reference file with the new hash
+        with open(ref_path, 'w') as ref_file:
+            ref_file.write(new_hash)
 
 
 # Helper functions for listing in a file structure with a blacklist
