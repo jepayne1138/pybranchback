@@ -20,17 +20,17 @@ class Repository:
     |  snapshots
     """
 
-    REQUIRED_DIRS = [
-        '.pbb',
-        '.pbb/objects',
-        '.pbb/refs',
-        '.pbb/refs/heads',
-    ]
-    REQUIRED_FILES = [
-        '.pbb/objhashcache',
-        '.pbb/HEAD',
-        '.pbb/snapshots',
-    ]
+    DIRS = {
+        'top': '.pbb',
+        'objects': '.pbb/objects',
+        'refs': '.pbb/refs',
+        'heads': '.pbb/refs/heads',
+    }
+    FILES = {
+        'objhashcache': '.pbb/objhashcache',
+        'head': '.pbb/HEAD',
+        'snapshots': '.pbb/snapshots',
+    }
 
     def __init__(self, root_dir, create=False):
         """Initialize instance variables"""
@@ -53,26 +53,24 @@ class Repository:
             return os.path.isfile(self._join_root(rel_path))
 
         return (
-            all(map(is_dir, self.REQUIRED_DIRS)) and
-            all(map(is_file, self.REQUIRED_FILES))
+            all(map(is_dir, self.DIRS.values())) and
+            all(map(is_file, self.FILES.values()))
         )
 
     def create_repo(self):
         """Create a new repository directory in the root location"""
-        # Create list of absolute paths
-        abs_dirs = map(lambda x: self._join_root(x), self.REQUIRED_DIRS)
-        abs_files = map(lambda x: self._join_root(x), self.REQUIRED_FILES)
-
         # Create all directories
-        for abs_dir in abs_dirs:
-            os.makedirs(abs_dir, exist_ok=True)
+        for rel_dir in self.DIRS.values():
+            os.makedirs(self._join_root(rel_dir), exist_ok=True)
 
         # Make the new version control folder hidden
-        ctypes.windll.kernel32.SetFileAttributesW(abs_dirs[0], 0x02)
+        ctypes.windll.kernel32.SetFileAttributesW(
+            self._join_root(self.DIRS['top']), 0x02
+        )
 
         # Create all files
-        for abs_file in abs_files:
-            with open(abs_file, 'wb'):
+        for rel_file in self.FILES.values():
+            with open(self._join_root(rel_file), 'wb'):
                 pass
 
     def _join_root(self, rel_path):
