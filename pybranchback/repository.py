@@ -1,5 +1,6 @@
 import os
 import posixpath
+import ctypes
 
 
 class Repository:
@@ -65,6 +66,9 @@ class Repository:
         # Create all directories
         for abs_dir in abs_dirs:
             os.makedirs(abs_dir, exist_ok=True)
+
+        # Make the new version control folder hidden
+        ctypes.windll.kernel32.SetFileAttributesW(abs_dirs[0], 0x02)
 
         # Create all files
         for abs_file in abs_files:
