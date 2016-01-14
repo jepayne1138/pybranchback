@@ -45,18 +45,35 @@ class Repository:
 
     def validate_repo(self):
         """Check that the repository structure exists and is valid"""
-        def is_dir(relative_path):
-            return True
-        def is_file(relative_path):
-            return True
+        def is_dir(rel_path):
+            return os.path.isdir(self._join_root(rel_path))
+
+        def is_file(rel_path):
+            return os.path.isfile(self._join_root(rel_path))
+
         return (
-            all(map(os.path.isdir, self.REQUIRED_DIRS)) and
-            all(map(os.path.isfile, self.REQUIRED_FILES))
+            all(map(is_dir, self.REQUIRED_DIRS)) and
+            all(map(is_file, self.REQUIRED_FILES))
         )
 
     def create_repo(self):
         """Create a new repository directory in the root location"""
-        pass
+        # Create list of absolute paths
+        abs_dirs = map(lambda x: self._join_root(x), self.REQUIRED_DIRS)
+        abs_files = map(lambda x: self._join_root(x), self.REQUIRED_FILES)
+
+        # Create all directories
+        for abs_dir in abs_dirs:
+            os.makedirs(abs_dir, exist_ok=True)
+
+        # Create all files
+        for abs_file in abs_files:
+            with open(abs_file, 'wb'):
+                pass
+
+    def _join_root(self, rel_path):
+        """Return a joined relative path with the instance root directory"""
+        return os.path.join(self.root_dir, rel_path)
 
 
 # Helper functions for listing in a file structure with a blacklist
