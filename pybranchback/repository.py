@@ -1,6 +1,8 @@
-import os
-import posixpath
 import ctypes
+import os
+import pickle
+import posixpath
+import pybranchback.snapshotdb as ssdb
 
 
 class Repository:
@@ -37,12 +39,18 @@ class Repository:
         self.root_dir = root_dir
         self.create = create
 
+        # Instance variables
+        self.objhashcache = {}
+
         # Validate that a repository exists at the given location
         if not self.validate_repo():
             if self.create:
                 self.create_repo()
             else:
                 raise ValueError('Repository does not exist or is invalid')
+
+        # Load any existing attributes
+        self._load_hashmap()
 
     def validate_repo(self):
         """Check that the repository structure exists and is valid"""
@@ -68,14 +76,33 @@ class Repository:
             self._join_root(self.DIRS['top']), 0x02
         )
 
-        # Create all files
-        for rel_file in self.FILES.values():
-            with open(self._join_root(rel_file), 'wb'):
-                pass
+        # Create HEAD file and set branch to 'master'
+        self._set_head('master')
+
+        # Create objhashcache file and set as empty
+        self._save_hashmap()
+
+        # Create the snapshots database
+        ssdb.execute(self.FILES['snapshots'], ssdb.CREATE)
 
     def _join_root(self, rel_path):
         """Return a joined relative path with the instance root directory"""
         return os.path.join(self.root_dir, rel_path)
+
+    def _set_branch(self, branch_name):
+        """Sets the current branch to the given name"""
+        with open(self.FILES['head'], 'w') as head_file:
+            head_file.write(branch_name)
+
+    def _save_hashmap(self):
+        """Saves the current state of the hashmap"""
+        with open(self.FILES['objhashcache'], 'wb') as hash_file:
+            pickle.dump(self.objhashcache, hash_file)
+
+    def _load_hashmap(self):
+        """Loads a saved hashmap from a file"""
+        with open(self.FILES['objhashcache'], 'rb') as hash_file:
+            self.objhashcache = pickle.load(hash_file)
 
 
 # Helper functions for listing in a file structure with a blacklist
