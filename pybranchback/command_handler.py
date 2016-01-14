@@ -30,7 +30,16 @@ def parse_arguments():
         'save', help='Save a new snapshot of the current status of the directory'
     )
     save_parser.add_argument(
-        '-l', '--label', type=str, help='Assigns a label to the snapshot'
+        '-l', '--label', type=str, default='',
+        help='Assigns a label to the snapshot'
+    )
+    save_parser.add_argument(
+        '-m', '--message', type=str, default='',
+        help='Assigns a message to the snapshot'
+    )
+    save_parser.add_argument(
+        '-u', '--user', type=str, default='',
+        help='Assigns a user to the snapshot'
     )
 
     # Parse 'load'
@@ -90,7 +99,7 @@ def process_commands():
 
     # Process 'save'
     if args.command == 'save':
-        pass
+        repo.snapshot(args.label, args.message, args.user)
 
     # Process 'load'
     if args.command == 'load':

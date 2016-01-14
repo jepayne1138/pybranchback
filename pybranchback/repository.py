@@ -25,11 +25,12 @@ class Repository:
     |  snapshots
     """
 
+    REPO_DIR = '.pbb'
     DIRS = {
-        'top': '.pbb',
-        'objects': '.pbb/objects',
-        'refs': '.pbb/refs',
-        'heads': '.pbb/refs/heads',
+        'top': REPO_DIR,
+        'objects': posixpath.join(REPO_DIR, 'objects'),
+        'refs': posixpath.join(REPO_DIR, 'refs'),
+        'heads': posixpath.join(REPO_DIR, 'refs', 'heads'),
     }
     FILES = {
         'objhashcache': '.pbb/objhashcache',
@@ -76,7 +77,7 @@ class Repository:
 
         # Make the new version control folder hidden
         ctypes.windll.kernel32.SetFileAttributesW(
-            self._join_root(self.DIRS['top']), 0x02
+            self._join_root(self.REPO_DIR), 0x02
         )
 
         # Create HEAD file and set branch to 'master'
@@ -93,7 +94,7 @@ class Repository:
         with open(self._join_root(self.FILES['head']), 'r') as head_file:
             return head_file.read().strip()
 
-    def snapshot(self):
+    def snapshot(self, label='', message='', user=''):
         """Takes a snapshot of the the current status of the directory"""
         # Recursively build tree structure
         with temp_wd(self.root_dir):
@@ -110,7 +111,7 @@ class Repository:
         self._update_branch_head(top_hash)
 
         # Insert snapshot data into the snapshot database
-        self._insert_snapshot(top_hash)
+        self._insert_snapshot(top_hash, label, message, user)
         return top_hash
 
     def _join_root(self, rel_path):
@@ -166,7 +167,7 @@ class Repository:
             'user': user,
         }
 
-        ssdb.execute(self.FILES['snapshots'], ssdb.INSERT, data)
+        ssdb.execute(self.FILES['snapshots'], ssdb.INSERT, data, commit=True)
 
     def _create_tree_node(self, directory):
         """Recursive function creates tree nodes for current snapshot"""
@@ -175,7 +176,7 @@ class Repository:
             raise ValueError('Not a directory: {}'.format(directory))
 
         # Get all files & directories for this level (excluding our pbb dir)
-        directories = list_directories(directory, [self.VC_DIR])
+        directories = list_directories(directory, [self.REPO_DIR])
         files = list_files(directory)
 
         node_entries = []
@@ -299,11 +300,13 @@ class Repository:
         if obj_hash != self._hash_diget(content):
             # Delta object must be rebuilt
             patch_tuple = pickle.loads(content)
+            print(patch_tuple)
             ref_content = self._read_object(patch_tuple[0])
             return bindifflib.patch(patch_tuple[1], ref_content)
 
         # If object is not a delta, simply return it's content
         return content
+
 
 # Helper functions for listing in a file structure with a blacklist
 def list_directories(directory, blacklist=None):

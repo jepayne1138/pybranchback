@@ -23,10 +23,15 @@ SELECT = """SELECT * FROM snapshots"""
 Row = sqlite3.Row
 
 
-def execute(db_path, command, parameters=None, row_factory=None):
+def execute(
+        db_path, command, parameters=None,
+        row_factory=None, commit=False):
     parameters = {} if parameters is None else parameters
     with contextlib.closing(sqlite3.connect(db_path)) as con:
         if row_factory is not None:
             con.row_factory = row_factory
         with contextlib.closing(con.cursor()) as cur:
-            return cur.execute(command, parameters)
+            return_value = cur.execute(command, parameters)
+        if commit:
+            con.commit()
+        return return_value
