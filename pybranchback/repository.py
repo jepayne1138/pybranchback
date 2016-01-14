@@ -1,11 +1,10 @@
 import ctypes
-import contextlib
 import hashlib
 import os
 import pickle
-import posixpath
-import pybranchback.snapshotdb as ssdb
 import pybranchback.bindifflib as bindifflib
+import pybranchback.snapshotdb as ssdb
+import pybranchback.utils as utils
 
 
 class Repository:
@@ -28,9 +27,9 @@ class Repository:
     REPO_DIR = '.pbb'
     DIRS = {
         'top': REPO_DIR,
-        'objects': posixpath.join(REPO_DIR, 'objects'),
-        'refs': posixpath.join(REPO_DIR, 'refs'),
-        'heads': posixpath.join(REPO_DIR, 'refs', 'heads'),
+        'objects': utils.posixjoin(REPO_DIR, 'objects'),
+        'refs': utils.posixjoin(REPO_DIR, 'refs'),
+        'heads': utils.posixjoin(REPO_DIR, 'refs', 'heads'),
     }
     FILES = {
         'objhashcache': '.pbb/objhashcache',
@@ -97,7 +96,7 @@ class Repository:
     def snapshot(self, label='', message='', user=''):
         """Takes a snapshot of the the current status of the directory"""
         # Recursively build tree structure
-        with temp_wd(self.root_dir):
+        with utils.temp_wd(self.root_dir):
             top_hash = self._create_tree_node('.')
 
         # Check if any changes were made and if the snapshot should be saved
@@ -113,6 +112,39 @@ class Repository:
         # Insert snapshot data into the snapshot database
         self._insert_snapshot(top_hash, label, message, user)
         return top_hash
+
+    def list_snapshots(self):
+        """Return a list of sqlite.Row objects for each snapshot"""
+        return ssdb.execute(
+            self.FILES['snapshots'], ssdb.SELECT,
+            row_factory=ssdb.Row, cursor='fetchall'
+        )
+
+    def checkout(self, checkout_hash):
+        """Checks out a different snapshot in the repository"""
+        snapshots = self.list_snapshots()
+        matches = utils.get_matches(
+            checkout_hash, [row['hash'] for row in snapshots],
+        )
+
+        # If a unique match not found, return the list of matches of display
+        if len(matches) != 1:
+            return matches
+
+        # Get the full matched hash
+        full_hash = matches[0]
+
+        # Check if the hash matches any current branch
+        branch = self._match_branch(full_hash)
+        if branch is not None:
+            # Just switch branch instead of checkout out a detached HEAD
+            self.switch_branch(branch)
+            return
+
+        # If the hash doesn't match a branch, we need to detach the HEAD
+        self._set_branch(full_hash)
+
+        # TODO: Switch all files in the directory
 
     def _join_root(self, rel_path):
         """Return a joined relative path with the instance root directory"""
@@ -176,18 +208,22 @@ class Repository:
             raise ValueError('Not a directory: {}'.format(directory))
 
         # Get all files & directories for this level (excluding our pbb dir)
-        directories = list_directories(directory, [self.REPO_DIR])
-        files = list_files(directory)
+        directories = utils.list_directories(directory, [self.REPO_DIR])
+        files = utils.list_files(directory)
 
         node_entries = []
 
         # Recursively create nodes for subdirectories
         for subdir in directories:
-            node_hash = self._create_tree_node(posixjoin(directory, subdir))
+            node_hash = self._create_tree_node(
+                utils.posixjoin(directory, subdir)
+            )
             node_entries.append('tree {} {}'.format(node_hash, subdir))
 
         for file in files:
-            node_hash = self._create_blob_node(posixjoin(directory, file))
+            node_hash = self._create_blob_node(
+                utils.posixjoin(directory, file)
+            )
             node_entries.append('blob {} {}'.format(node_hash, file))
 
         # Join node entries into the node content
@@ -307,42 +343,18 @@ class Repository:
         # If object is not a delta, simply return it's content
         return content
 
+    def _match_branch(self, snapshot_hash):
+        """Checks if any current branch current matches the given hash"""
+        head_dir = self._join_root(self.DIRS['heads'])
 
-# Helper functions for listing in a file structure with a blacklist
-def list_directories(directory, blacklist=None):
-    """Returns a list of all directories not in the blacklist"""
-    return _list_with_blacklist(directory, blacklist, 1)
+        branches = utils.list_files(head_dir)
 
+        # Reach each branch reference for matching hash
+        for branch in branches:
+            with open(os.path.join(head_dir, branch), 'r') as branch_file:
+                branch_hash = branch_file.read().strip()
+            if branch_hash == snapshot_hash:
+                return branch
 
-def list_files(directory, blacklist=None):
-    """Returns a list of all files not in the blacklist"""
-    return _list_with_blacklist(directory, blacklist, 2)
-
-
-def _list_with_blacklist(directory, blacklist, return_type):
-    """Returns a listing of a directory with blacklist for a given type
-
-    return_type:
-      1:  returns a list of all non-blacklisted directories
-      2:  returns a list of all non-blacklisted files
-    """
-    blacklist = [] if blacklist is None else blacklist
-    return [
-        f for f in next(os.walk(directory))[return_type]
-        if f not in blacklist
-    ]
-
-
-# Helper function for creating normalized posix paths
-def posixjoin(*args):
-    """Returns a normalized path of posix joined arguments"""
-    return posixpath.normpath(posixpath.join(*args))
-
-
-@contextlib.contextmanager
-def temp_wd(path):
-    """Context manager for temporarily switching directories"""
-    save_wd = os.getcwd()
-    os.chdir(path)
-    yield
-    os.chdir(save_wd)
+        # If no matching hashes were found, return None
+        return None

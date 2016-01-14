@@ -1,6 +1,7 @@
 import argparse
 import os
 from pybranchback.repository import Repository
+import pybranchback.utils as utils
 
 
 def parse_arguments():
@@ -103,7 +104,15 @@ def process_commands():
 
     # Process 'load'
     if args.command == 'load':
-        pass
+        matches = repo.checkout(args.snapshot)
+
+        # On error, display some helpful information
+        if len(matches) == 0:
+            print('No snapshots found for: {args.snapshot}'.format(args=args))
+        if len(matches) > 1:
+            print('No unique match for: {args.snapshot}'.format(args=args))
+            for match in matches:
+                print('  - {}'.format(match))
 
     # Process 'branch'
     if args.command == 'branch':
@@ -111,7 +120,29 @@ def process_commands():
 
     # Process 'list'
     if args.command == 'list':
-        pass
+        # Get information for display
+        snapshots = repo.list_snapshots()
+        cur_hash = repo._get_branch_head()
+        cur_branch = repo.current_branch()
+
+        # Display the snapshot header
+        print('\nSnapshots:')
+        base_string = '{cur}{id: <3} {hash: <40} {branch: <10} {timestamp}'
+        header_string = base_string.format(
+            cur=' ', id='id', hash='hash',
+            branch='branch', timestamp='timestamp'
+        )
+        print(header_string)
+        print('-' * len(header_string))
+
+        # Display all snapshot data
+        for snapshot in snapshots:
+            if (snapshot['hash'] == cur_hash and
+                    snapshot['branch'] == cur_branch):
+                current = '*'
+            else:
+                current = ' '
+            print(base_string.format(cur=current, **snapshot))
 
 
 def find_unique(string, options):

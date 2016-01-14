@@ -25,13 +25,14 @@ Row = sqlite3.Row
 
 def execute(
         db_path, command, parameters=None,
-        row_factory=None, commit=False):
+        row_factory=None, commit=False, cursor=''):
     parameters = {} if parameters is None else parameters
     with contextlib.closing(sqlite3.connect(db_path)) as con:
         if row_factory is not None:
             con.row_factory = row_factory
         with contextlib.closing(con.cursor()) as cur:
-            return_value = cur.execute(command, parameters)
-        if commit:
-            con.commit()
-        return return_value
+            cur.execute(command, parameters)
+            if commit:
+                con.commit()
+            if cursor:
+                return getattr(cur, cursor)()
