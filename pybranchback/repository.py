@@ -2,6 +2,8 @@ import ctypes
 import hashlib
 import os
 import pickle
+import shutil
+
 import pybranchback.bindifflib as bindifflib
 import pybranchback.snapshotdb as ssdb
 import pybranchback.utils as utils
@@ -145,6 +147,67 @@ class Repository:
         self._set_branch(full_hash)
 
         # TODO: Switch all files in the directory
+        self.update_files()
+
+    def list_branches(self):
+        """Returns a list of all existing branch names"""
+        return utils.list_files(self._join_root(self.DIRS['heads']))
+
+    def _update_files(self):
+        """Updates directory with the files for the given snapshot
+
+        Clears out the entire directory, then rebuilds the directory from
+        the repository. Would be better in the future to probably only
+        overwrite files that needed updates and remove files that no longer
+        should be there, but this was simple and I can optimize later if
+        it needs better performance.
+        """
+        # Get all files and directories for this level (excluding repo)
+        directories = utils.list_directories(self.root, [self.REPO_DIR])
+        files = utils.list_files(self.root)
+
+        # Remove all of these files and recursively remove directories
+        # Remove files
+        for file in files:
+            os.remove(self._join_root(file))
+        # Remove directories
+        for directory in directories:
+            shutil.rmtree(self._join_root(directory))
+
+        # Check HEAD for branch name of snapshot address
+        branch = self.current_branch()
+        # Branch might not be a branch, could be detached address
+        if branch not in self.list_branches():
+            # Branch name is actually detached address
+            top_hash = branch
+        else:
+            top_hash = self._get_branch_head()
+
+        self._build_tree(top_hash, self.root)
+
+    def _build_tree(self, node_hash, current_path):
+        """Recursive function to rebuild file structure for objects"""
+        content = self._read_object(node_hash).decode().rstrip()
+
+        for line in content.split('\n'):
+            obj_type, obj_hash, obj_name = self._parse_tree_line(line)
+            new_path = os.path.join(current_path, obj_name)
+
+            # Process each type of object
+            if obj_type == 'tree':
+                # Make the directory
+                os.makedirs(new_path)
+                # Make the directory
+                self._build_tree(obj_hash, new_path)
+            if obj_type == 'blob':
+                # Rebuild the file
+                with open(new_path, 'wb') as obj_file:
+                    obj_file.write(self._read_object(obj_hash))
+
+    def _parse_tree_line(self, line):
+        """Parses each line in a tree object"""
+        clean = line.rstrip()
+        return clean[:5].rstrip(), clean[5:46].rstrip(), clean[46:].rstrip()
 
     def _join_root(self, rel_path):
         """Return a joined relative path with the instance root directory"""
@@ -347,7 +410,7 @@ class Repository:
         """Checks if any current branch current matches the given hash"""
         head_dir = self._join_root(self.DIRS['heads'])
 
-        branches = utils.list_files(head_dir)
+        branches = self.list_branches()
 
         # Reach each branch reference for matching hash
         for branch in branches:
