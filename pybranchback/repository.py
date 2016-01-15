@@ -9,6 +9,30 @@ import pybranchback.snapshotdb as ssdb
 import pybranchback.utils as utils
 
 
+class RepositoryException(Exception):
+
+    """Base Exception for all Repository Exceptions"""
+
+    pass
+
+
+class InvalidHashException(RepositoryException):
+
+    """A given snapshot hash is not found or ambiguous"""
+
+    def __init__(self, msg, results=None):
+        super().__init__(msg)
+        self.msg = msg
+        self.results = results
+
+
+class DirtyDirectoryException(RepositoryException):
+
+    """Checkout was attempted with changes to the directory"""
+
+    pass
+
+
 class Repository:
 
     """Manages a repository instance
@@ -101,9 +125,18 @@ class Repository:
         with utils.temp_wd(self.root_dir):
             top_hash = self._create_tree_node('.')
 
+        # Get hash of the current snapshot and if it is detached
+        old_hash, detached = self._current_snapshot_hash()
+
         # Check if any changes were made and if the snapshot should be saved
-        if self._get_branch_head() == top_hash:
+        if old_hash == top_hash:
             return 'No changes to repository'
+
+        if detached:
+            raise ValueError(
+                'Detached HEAD. Snapshot was not saved. '
+                'Save as branch to make changes.'
+            )
 
         # Save updated hashmap
         self._save_hashmap()
@@ -115,6 +148,19 @@ class Repository:
         self._insert_snapshot(top_hash, label, message, user)
         return top_hash
 
+    def create_branch(self, name, snapshot=None):
+        """Creates a new branch with the given name at the given snapshot
+
+        Raises:
+          InvalidHashException: If not a single unique hash is found
+        """
+        if snapshot is None:
+            full_hash, _ = self._current_snapshot_hash()
+        else:
+            full_hash = self._full_hash(snapshot)
+
+        self._update_branch_head(full_hash, name)
+
     def list_snapshots(self):
         """Return a list of sqlite.Row objects for each snapshot"""
         return ssdb.execute(
@@ -122,19 +168,28 @@ class Repository:
             row_factory=ssdb.Row, cursor='fetchall'
         )
 
-    def checkout(self, checkout_hash):
-        """Checks out a different snapshot in the repository"""
-        snapshots = self.list_snapshots()
-        matches = utils.get_matches(
-            checkout_hash, [row['hash'] for row in snapshots],
-        )
+    def checkout(self, checkout_hash, force=False, branch=None):
+        """Checks out a different snapshot in the repository
 
-        # If a unique match not found, return the list of matches of display
-        if len(matches) != 1:
-            return matches
+        If a string is given for branch parameter, a new branch at the
+        checkout location will be created
 
-        # Get the full matched hash
-        full_hash = matches[0]
+        Raises:
+          InvalidHashException: If not a single unique hash is found
+          DirtyDirectoryException: If changes made since last save
+        """
+        # Get the full hash to be checked out
+        full_hash = self._full_hash(checkout_hash)
+
+        # Raise exception on a dirty directory if no force option
+        if not force:
+            self._check_dirty()
+
+        # Check if branch option was given
+        if branch is not None:
+            # Crate a new branch as the checkout location, then the
+            # following code will simply check out that branch
+            self.create_branch(branch, full_hash)
 
         # Check if the hash matches any current branch
         branch = self._match_branch(full_hash)
@@ -149,9 +204,71 @@ class Repository:
         # TODO: Switch all files in the directory
         self.update_files()
 
+    def switch_branch(self, name, force=False):
+        """Sets the branch to the given name then updates all files
+
+        Raises:
+          ValueError: No branch found with given name
+          DirtyDirectoryException: If changes made since last save
+        """
+        # Validate given branch name
+        if name not in self.list_branches():
+            raise ValueError('No branch found: '.format(name))
+
+        # Raise exception on a dirty directory if no force option
+        if not force:
+            self._check_dirty()
+
+        # Switch the the existing branch
+        self._set_branch(name)
+        self._update_files()
+
     def list_branches(self):
         """Returns a list of all existing branch names"""
         return utils.list_files(self._join_root(self.DIRS['heads']))
+
+    def _check_dirty(self):
+        """Raises exception if the directory has changes since last save
+
+        Raises:
+          DirtyDirectoryException: If changes made since last save
+        """
+        # Get hash of directory in it's current form
+        with utils.temp_wd(self.root_dir):
+            dir_hash = self._get_tree_hash('.')
+
+        # Check if any outstanding changes are in the directory
+        cur_hash, _ = self._current_snapshot_hash()
+        if cur_hash == dir_hash:
+            # Changes have been made and we want to warn the user
+            raise DirtyDirectoryException(
+                'Changes have been made to the directory. '
+                'Use force option to overwrite.'
+            )
+
+    def _full_hash(self, partial):
+        """Returns a unique full snapshot hash from from a partial hash
+
+        Raises:
+          InvalidHashException: If not a single unique hash is found
+        """
+        snapshots = self.list_snapshots()
+        matches = utils.get_matches(
+            partial, [row['hash'] for row in snapshots],
+        )
+
+        if len(matches) < 1:
+            raise InvalidHashException(
+                'No snapshots found for: {}'.format(partial), matches
+            )
+
+        if len(matches) > 1:
+            raise InvalidHashException(
+                'No unique match for: {}'.format(partial), matches
+            )
+
+        # Get the full matched hash
+        return matches[0]
 
     def _update_files(self):
         """Updates directory with the files for the given snapshot
@@ -174,14 +291,8 @@ class Repository:
         for directory in directories:
             shutil.rmtree(self._join_root(directory))
 
-        # Check HEAD for branch name of snapshot address
-        branch = self.current_branch()
-        # Branch might not be a branch, could be detached address
-        if branch not in self.list_branches():
-            # Branch name is actually detached address
-            top_hash = branch
-        else:
-            top_hash = self._get_branch_head()
+        # Get hash of the current snapshot
+        top_hash, _ = self._current_snapshot_hash()
 
         self._build_tree(top_hash, self.root)
 
@@ -228,9 +339,26 @@ class Repository:
         with open(self.FILES['objhashcache'], 'rb') as hash_file:
             self.objhashcache = pickle.load(hash_file)
 
+    def _current_snapshot_hash(self):
+        """Returns the hash of the current snapshot and if it is detached"""
+        # Check HEAD for branch name of snapshot address
+        branch = self.current_branch()
+
+        # Branch might not be a branch, could be detached address
+        if branch not in self.list_branches():
+            # Branch name is actually detached address
+            snapshot_hash = branch
+            detached = True
+        else:
+            snapshot_hash = self._get_branch_head()
+            detached = False
+
+        return (snapshot_hash, detached)
+
     def _get_branch_head(self, branch=None):
         """Returns the hash for the given branch"""
-        branch = self.current_branch() if branch is None else branch
+        if branch is None:
+            branch = self.current_branch()
 
         # Construct path to the reference file
         ref_path = self._join_root(os.path.join(self.DIRS['heads'], branch))
@@ -243,7 +371,8 @@ class Repository:
 
     def _update_branch_head(self, new_hash, branch=None):
         """Updates a branch with a new hash address to a head snapshot"""
-        branch = self.current_branch() if branch is None else branch
+        if branch is None:
+            branch = self.current_branch()
 
         # Construct path to the reference file
         ref_path = self._join_root(os.path.join(self.DIRS['heads'], branch))
@@ -302,6 +431,48 @@ class Repository:
 
         # Save the node contents to a vc object
         return self._save_node(path, node_content)
+
+    def _get_tree_hash(self, directory):
+        """Recursively generate hashes of nodes for current directory"""
+        # Validate the given root directory
+        if not os.path.isdir(directory):
+            raise ValueError('Not a directory: {}'.format(directory))
+
+        # Get all files & directories for this level (excluding our pbb dir)
+        directories = utils.list_directories(directory, [self.REPO_DIR])
+        files = utils.list_files(directory)
+
+        node_entries = []
+
+        # Recursively create nodes for subdirectories
+        for subdir in directories:
+            node_hash = self._get_tree_hash(
+                utils.posixjoin(directory, subdir)
+            )
+            node_entries.append('tree {} {}'.format(node_hash, subdir))
+
+        for file in files:
+            node_hash = self._get_blob_hash(
+                utils.posixjoin(directory, file)
+            )
+            node_entries.append('blob {} {}'.format(node_hash, file))
+
+        # Join node entries into the node content
+        node_content = '\n'.join(node_entries) + '\n'
+
+        # Get node content hash
+        return self._hash_diget(self._byte_convert(node_content))
+
+    def _get_blob_hash(self, path):
+        """Get the hash for a given blob file at the path"""
+        with open(path, 'rb') as input_file:
+            node_content = input_file.read()
+
+        # Convert to bytes if necessary
+        bytes_content = self._byte_convert(node_content)
+
+        # Get node content hash
+        return self._hash_diget(bytes_content)
 
     def _save_node(self, path, node_content):
         """Calculates a content hash and saves the content to a file"""

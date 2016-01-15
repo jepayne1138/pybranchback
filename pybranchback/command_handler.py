@@ -1,7 +1,6 @@
 import argparse
 import os
-from pybranchback.repository import Repository
-import pybranchback.utils as utils
+from pybranchback.repository as repository
 
 
 def parse_arguments():
@@ -54,6 +53,10 @@ def parse_arguments():
         '-b', '--branch', type=str,
         help='Creates a new branch with the given label'
     )
+    load_parser.add_argument(
+        '-f', '--force', action='store_true',
+        help='Forces checkout even if unsaved changes in the directory'
+    )
 
     # Parse 'branch'
     branch_parser = subparsers.add_parser(
@@ -94,29 +97,36 @@ def process_commands():
     args = parse_arguments()
 
     # Get repository instance and process 'init' command
-    repo = Repository(
+    repo = repository.Repository(
         os.getcwd(), create=(args.command == 'init')
     )
 
     # Process 'save'
     if args.command == 'save':
-        repo.snapshot(args.label, args.message, args.user)
+        try:
+            repo.snapshot(args.label, args.message, args.user)
+        except ValueError as err:
+            print(err)
 
     # Process 'load'
     if args.command == 'load':
-        matches = repo.checkout(args.snapshot)
-
-        # On error, display some helpful information
-        if len(matches) == 0:
-            print('No snapshots found for: {args.snapshot}'.format(args=args))
-        if len(matches) > 1:
-            print('No unique match for: {args.snapshot}'.format(args=args))
-            for match in matches:
-                print('  - {}'.format(match))
+        try:
+            matches = repo.checkout(args.snapshot, args.force, args.branch)
+        except repository.InvalidHashException as err:
+            print(invalid_hash_handler(err))
+        except repository.DirtyDirectyoryException as err:
+            print(dirty_directory_handler(err))
+            print(
+                'User -f (--force) option to override. '
+                'All changes since the last snapshot will be lost.'
+            )
 
     # Process 'branch'
     if args.command == 'branch':
-        pass
+        try:
+            repo.create_branch(args.name, args.snapshot)
+        except repository.InvalidHashException as err:
+            print(invalid_hash_handler(err))
 
     # Process 'list'
     if args.command == 'list':
@@ -145,6 +155,14 @@ def process_commands():
             print(base_string.format(cur=current, **snapshot))
 
 
-def find_unique(string, options):
-    """Find a unique string in a list with a specified beginning"""
-    return [opt for opt in options if opt.startwith(string)]
+def invalid_hash_handler(err):
+    """Generates a string message on an InvalidHashException"""
+    str_lines = [str(err)]
+    for match in err.results:
+        str_lines.append('  - {}'.format(match))
+    return '\n'.join(str_lines)
+
+
+def dirty_directory_handler(err):
+    """Generates a string message on an DirtyDirectyoryException"""
+    return err.msg

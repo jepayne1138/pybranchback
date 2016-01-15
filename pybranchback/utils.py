@@ -21,7 +21,8 @@ def _list_with_blacklist(directory, blacklist, return_type):
       1:  returns a list of all non-blacklisted directories
       2:  returns a list of all non-blacklisted files
     """
-    blacklist = [] if blacklist is None else blacklist
+    if blacklist is None:
+        blacklist = []
     return [
         f for f in next(os.walk(directory))[return_type]
         if f not in blacklist

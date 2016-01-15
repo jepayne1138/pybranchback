@@ -26,7 +26,8 @@ Row = sqlite3.Row
 def execute(
         db_path, command, parameters=None,
         row_factory=None, commit=False, cursor=''):
-    parameters = {} if parameters is None else parameters
+    if parameters is None:
+        parameters = {}
     with contextlib.closing(sqlite3.connect(db_path)) as con:
         if row_factory is not None:
             con.row_factory = row_factory
