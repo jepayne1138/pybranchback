@@ -1,6 +1,6 @@
 import argparse
 import os
-from pybranchback.repository as repository
+import pybranchback.repository as repository
 
 
 def parse_arguments():
@@ -111,7 +111,7 @@ def process_commands():
     # Process 'load'
     if args.command == 'load':
         try:
-            matches = repo.checkout(args.snapshot, args.force, args.branch)
+            repo.checkout(args.snapshot, args.force, args.branch)
         except repository.InvalidHashException as err:
             print(invalid_hash_handler(err))
         except repository.DirtyDirectyoryException as err:

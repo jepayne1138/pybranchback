@@ -33,6 +33,20 @@ class DirtyDirectoryException(RepositoryException):
     pass
 
 
+class CleanDirectoryException(RepositoryException):
+
+    """Save was attempted on a branch with a detached HEAD"""
+
+    pass
+
+
+class DetachedHeadException(RepositoryException):
+
+    """Save was attempted on a branch with a detached HEAD"""
+
+    pass
+
+
 class Repository:
 
     """Manages a repository instance
