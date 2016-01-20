@@ -105,7 +105,7 @@ def process_commands():
     if args.command == 'save':
         try:
             repo.snapshot(args.label, args.message, args.user)
-        except ValueError as err:
+        except repository.RepositoryException as err:
             print(err)
 
     # Process 'load'

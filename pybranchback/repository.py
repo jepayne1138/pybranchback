@@ -144,10 +144,10 @@ class Repository:
 
         # Check if any changes were made and if the snapshot should be saved
         if old_hash == top_hash:
-            return 'No changes to repository'
+            raise CleanDirectoryException('No changes to repository')
 
         if detached:
-            raise ValueError(
+            raise DetachedHeadException(
                 'Detached HEAD. Snapshot was not saved. '
                 'Save as branch to make changes.'
             )
