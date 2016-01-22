@@ -9,4 +9,4 @@ def diff(compress, reference):
 
 def patch(patch, reference):
     """Return an uncompressed file by applying the patch to the reference"""
-    return bsdiff4.patch(patch, reference)
+    return bsdiff4.patch(reference, patch)

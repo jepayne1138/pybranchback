@@ -114,7 +114,7 @@ def process_commands():
             repo.checkout(args.snapshot, args.force, args.branch)
         except repository.InvalidHashException as err:
             print(invalid_hash_handler(err))
-        except repository.DirtyDirectyoryException as err:
+        except repository.DirtyDirectoryException as err:
             print(dirty_directory_handler(err))
             print(
                 'User -f (--force) option to override. '
