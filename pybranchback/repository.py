@@ -64,6 +64,7 @@ class Repository:
     |  snapshots
     """
 
+    DEFAULT_BRANCH = 'master'
     REPO_DIR = '.pbb'
     DIRS = {
         'top': REPO_DIR,
@@ -119,8 +120,8 @@ class Repository:
             self._join_root(self.REPO_DIR), 0x02
         )
 
-        # Create HEAD file and set branch to 'master'
-        self._set_branch('master')
+        # Create HEAD file and set branch to the default name
+        self._set_branch(self.DEFAULT_BRANCH)
 
         # Create objhashcache file and set as empty
         self._save_hashmap()
@@ -360,9 +361,16 @@ class Repository:
 
         # Branch might not be a branch, could be detached address
         if branch not in self.list_branches():
+            # On initialization, a default branch is created with no actual
+            # snapshots, meaning we should return filler data
+            if branch == self.DEFAULT_BRANCH:
+                snapshot_hash = None
+                detached = False
+
             # Branch name is actually detached address
-            snapshot_hash = branch
-            detached = True
+            else:
+                snapshot_hash = branch
+                detached = True
         else:
             snapshot_hash = self._get_branch_head()
             detached = False
