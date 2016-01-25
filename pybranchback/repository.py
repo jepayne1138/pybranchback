@@ -183,7 +183,7 @@ class Repository:
             row_factory=ssdb.Row, cursor='fetchall'
         )
 
-    def checkout(self, checkout_hash, force=False, branch=None):
+    def checkout(self, checkout, create=None, force=False, branch=False):
         """Checks out a different snapshot in the repository
 
         If a string is given for branch parameter, a new branch at the
@@ -193,28 +193,34 @@ class Repository:
           InvalidHashException: If not a single unique hash is found
           DirtyDirectoryException: If changes made since last save
         """
+        # If branch option was given, attempt to switch to an existing branch
+        if branch:
+            # Just switch branch instead
+            self.switch_branch(checkout)
+            return
+
         # Get the full hash to be checked out
-        full_hash = self._full_hash(checkout_hash)
+        full_hash = self._full_hash(checkout)
 
         # Raise exception on a dirty directory if no force option
         if not force:
             self._check_dirty()
 
-        # Check if branch option was given
-        if branch is not None:
+        # Check if create option was given
+        if create is not None:
             # Crate a new branch as the checkout location, then the
             # following code will simply check out that branch
-            self.create_branch(branch, full_hash)
-
-        # Check if the hash matches any current branch
-        branch = self._match_branch(full_hash)
-        if branch is not None:
-            # Just switch branch instead of checkout out a detached HEAD
-            self.switch_branch(branch)
-            return
-
-        # If the hash doesn't match a branch, we need to detach the HEAD
-        self._set_branch(full_hash)
+            self.create_branch(create, full_hash)
+            self.switch_branch(create)
+        else:
+            # Check if the hash matches any current branch
+            branch = self._match_branch(full_hash)
+            if branch is not None:
+                # Just switch branch instead of checkout a detached HEAD
+                self.switch_branch(branch)
+                return
+            # If the hash doesn't match a branch, we need to detach the HEAD
+            self._set_branch(full_hash)
 
         # TODO: Switch all files in the directory
         self.update_files()
@@ -600,7 +606,7 @@ class Repository:
         return content
 
     def _match_branch(self, snapshot_hash):
-        """Checks if any current branch current matches the given hash"""
+        """Checks if any current branch matches the given hash"""
         head_dir = self._join_root(self.DIRS['heads'])
 
         branches = self.list_branches()

@@ -47,11 +47,16 @@ def parse_arguments():
         'load', help='Loads an existing snapshot or branch'
     )
     load_parser.add_argument(
-        'snapshot', type=str, help='Address of the snapshot to be loaded'
+        'snapshot', type=str,
+        help='Address (or branch name with -b) of the snapshot to be loaded'
     )
     load_parser.add_argument(
-        '-b', '--branch', type=str,
+        '-c', '--create', type=str,
         help='Creates a new branch with the given label'
+    )
+    load_parser.add_argument(
+        '-b', '--branch', action='store_true',
+        help='Load the branch with the given name'
     )
     load_parser.add_argument(
         '-f', '--force', action='store_true',
@@ -111,7 +116,7 @@ def process_commands():
     # Process 'load'
     if args.command == 'load':
         try:
-            repo.checkout(args.snapshot, args.force, args.branch)
+            repo.checkout(args.snapshot, args.force, args.create, args.branch)
         except repository.InvalidHashException as err:
             print(invalid_hash_handler(err))
         except repository.DirtyDirectoryException as err:
