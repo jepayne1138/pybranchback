@@ -30,10 +30,6 @@ def parse_arguments():
         'save', help='Save a new snapshot of the current status of the directory'
     )
     save_parser.add_argument(
-        '-l', '--label', type=str, default='',
-        help='Assigns a label to the snapshot'
-    )
-    save_parser.add_argument(
         '-m', '--message', type=str, default='',
         help='Assigns a message to the snapshot'
     )
@@ -52,7 +48,7 @@ def parse_arguments():
     )
     load_parser.add_argument(
         '-c', '--create', type=str,
-        help='Creates a new branch with the given label'
+        help='Creates a new branch with the given name'
     )
     load_parser.add_argument(
         '-b', '--branch', action='store_true',
@@ -74,6 +70,14 @@ def parse_arguments():
         'snapshot', type=str, nargs='?',
         help='Identifier of the snapshot to branch from'
     )
+    save_parser.add_argument(
+        '-m', '--message', type=str, default='',
+        help='Assigns a message to the snapshot'
+    )
+    save_parser.add_argument(
+        '-u', '--user', type=str, default='',
+        help='Assigns a user to the snapshot'
+    )
 
     # Parse 'list'
     list_parser = subparsers.add_parser(
@@ -90,10 +94,6 @@ def parse_arguments():
     list_parser.add_argument(
         '-b', '--branches', action='store_true',
         help='Display list of branches'
-    )
-    list_parser.add_argument(
-        '-d', '--detailed', action='store_true',
-        help='Displays detailed information'
     )
 
     # Parse and return arguments
@@ -113,7 +113,7 @@ def process_commands():
     # Process 'save'
     if args.command == 'save':
         try:
-            repo.snapshot(args.label, args.message, args.user)
+            repo.snapshot(args.message, args.user)
         except repository.RepositoryException as err:
             print(err)
 
@@ -133,7 +133,7 @@ def process_commands():
     # Process 'branch'
     if args.command == 'branch':
         try:
-            repo.create_branch(args.name, args.snapshot)
+            repo.create_branch(args.name, args.snapshot, args.message, args.user)
         except repository.InvalidHashException as err:
             print(invalid_hash_handler(err))
 
@@ -146,10 +146,13 @@ def process_commands():
 
         # Display the snapshot header
         print('\nSnapshots:')
-        base_string = '{cur}{id: <3} {hash: <40} {branch: <10} {timestamp}'
+        base_string = (
+            '{cur}{id: <3} {hash: <40} {branch: <10} '
+            '{timestamp: <20} {message: <40}'
+        )
         header_string = base_string.format(
             cur=' ', id='id', hash='hash',
-            branch='branch', timestamp='timestamp'
+            branch='branch', timestamp='timestamp', message='message'
         )
         print(header_string)
         print('-' * len(header_string))

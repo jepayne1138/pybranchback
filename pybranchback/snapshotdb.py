@@ -7,15 +7,14 @@ CREATE = """
         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
         hash TEXT NOT NULL,
         branch TEXT NOT NULL,
-        label TEXT,
         message TEXT,
         user TEXT,
         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
     );
 """
 INSERT = """
-    INSERT INTO snapshots (hash, branch, label, message, user)
-    VALUES (:hash, :branch, :label, :message, :user)
+    INSERT INTO snapshots (hash, branch, message, user)
+    VALUES (:hash, :branch, :message, :user)
 """
 SELECT = """SELECT * FROM snapshots"""
 

@@ -134,7 +134,7 @@ class Repository:
         with open(self._join_root(self.FILES['head']), 'r') as head_file:
             return head_file.read().strip()
 
-    def snapshot(self, label='', message='', user=''):
+    def snapshot(self, message='', user=''):
         """Takes a snapshot of the the current status of the directory"""
         # Recursively build tree structure
         with utils.temp_wd(self.root_dir):
@@ -160,10 +160,10 @@ class Repository:
         self._update_branch_head(top_hash)
 
         # Insert snapshot data into the snapshot database
-        self._insert_snapshot(top_hash, label, message, user)
+        self._insert_snapshot(top_hash, message, user)
         return top_hash
 
-    def create_branch(self, name, snapshot=None):
+    def create_branch(self, name, snapshot=None, message='', user=''):
         """Creates a new branch with the given name at the given snapshot
 
         Raises:
@@ -177,7 +177,7 @@ class Repository:
         self._update_branch_head(full_hash, name)
 
         # Insert the branch reference into the database
-        self._insert_snapshot(full_hash, '', '', '', branch=name)
+        self._insert_snapshot(full_hash, message, user, branch=name)
 
         if snapshot is None:
             # If we are branching from our current directory, automatically
@@ -425,16 +425,13 @@ class Repository:
         with open(ref_path, 'w') as ref_file:
             ref_file.write(new_hash)
 
-    def _insert_snapshot(
-            self, obj_hash, label='',
-            message='', user='', branch=None):
+    def _insert_snapshot(self, obj_hash, message='', user='', branch=None):
         """Updates snapshots database with snapshot data"""
         if branch is None:
             branch = self.current_branch()
         data = {
             'hash': obj_hash,
             'branch': branch,
-            'label': label,
             'message': message,
             'user': user,
         }
