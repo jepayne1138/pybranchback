@@ -4,7 +4,7 @@ import bsdiff4
 
 def diff(compress, reference):
     """Compresses the given bytes using the reference and return a patch"""
-    return bsdiff4.diff(compress, reference)
+    return bsdiff4.diff(reference, compress)
 
 
 def patch(patch, reference):

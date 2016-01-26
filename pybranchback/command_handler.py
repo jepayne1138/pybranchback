@@ -78,6 +78,10 @@ def parse_arguments():
     # Parse 'list'
     list_parser = subparsers.add_parser(
         'list', help='Lists snapshots and/or branches of the repository',
+        description=(
+            'Displays a text list of all outstanding snapshots. '
+            'A * indicates the current snapshot, and D indicates source of a detached HEAD'
+        ),
     )
     list_parser.add_argument(
         '-s', '--snapshots', action='store_true',
@@ -116,7 +120,7 @@ def process_commands():
     # Process 'load'
     if args.command == 'load':
         try:
-            repo.checkout(args.snapshot, args.force, args.create, args.branch)
+            repo.checkout(args.snapshot, args.create, args.force, args.branch)
         except repository.InvalidHashException as err:
             print(invalid_hash_handler(err))
         except repository.DirtyDirectoryException as err:
@@ -137,7 +141,7 @@ def process_commands():
     if args.command == 'list':
         # Get information for display
         snapshots = repo.list_snapshots()
-        cur_hash = repo._get_branch_head()
+        cur_hash, detached = repo._current_snapshot_hash()
         cur_branch = repo.current_branch()
 
         # Display the snapshot header
@@ -152,7 +156,9 @@ def process_commands():
 
         # Display all snapshot data
         for snapshot in snapshots:
-            if (snapshot['hash'] == cur_hash and
+            if detached and (snapshot['hash'] == cur_hash):
+                current = 'D'
+            elif (not detached and snapshot['hash'] == cur_hash and
                     snapshot['branch'] == cur_branch):
                 current = '*'
             else:
@@ -170,4 +176,4 @@ def invalid_hash_handler(err):
 
 def dirty_directory_handler(err):
     """Generates a string message on an DirtyDirectyoryException"""
-    return err.msg
+    return err

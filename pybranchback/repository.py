@@ -176,6 +176,14 @@ class Repository:
 
         self._update_branch_head(full_hash, name)
 
+        # Insert the branch reference into the database
+        self._insert_snapshot(full_hash, '', '', '', branch=name)
+
+        if snapshot is None:
+            # If we are branching from our current directory, automatically
+            # check out the branch after creation
+            self._set_branch(name)
+
     def list_snapshots(self):
         """Return a list of sqlite.Row objects for each snapshot"""
         return ssdb.execute(
@@ -196,7 +204,7 @@ class Repository:
         # If branch option was given, attempt to switch to an existing branch
         if branch:
             # Just switch branch instead
-            self.switch_branch(checkout)
+            self.switch_branch(checkout, force)
             return
 
         # Get the full hash to be checked out
@@ -211,19 +219,19 @@ class Repository:
             # Crate a new branch as the checkout location, then the
             # following code will simply check out that branch
             self.create_branch(create, full_hash)
-            self.switch_branch(create)
+            self.switch_branch(create, force)
         else:
             # Check if the hash matches any current branch
             branch = self._match_branch(full_hash)
             if branch is not None:
                 # Just switch branch instead of checkout a detached HEAD
-                self.switch_branch(branch)
+                self.switch_branch(branch, force)
                 return
             # If the hash doesn't match a branch, we need to detach the HEAD
             self._set_branch(full_hash)
 
         # TODO: Switch all files in the directory
-        self.update_files()
+        self._update_files()
 
     def switch_branch(self, name, force=False):
         """Sets the branch to the given name then updates all files
@@ -260,7 +268,7 @@ class Repository:
 
         # Check if any outstanding changes are in the directory
         cur_hash, _ = self._current_snapshot_hash()
-        if cur_hash == dir_hash:
+        if cur_hash != dir_hash:
             # Changes have been made and we want to warn the user
             raise DirtyDirectoryException(
                 'Changes have been made to the directory. '
@@ -284,6 +292,14 @@ class Repository:
             )
 
         if len(matches) > 1:
+            # If multiple matches are all the same, pick the first
+            # (All should be the same, just different branch names, which
+            #  we don't care about at the moment as we're not checking out)
+            if len(set(matches)) == 1:
+                # Matches have the same hash
+                return matches[0]
+
+            print([(row['hash'], row['branch']) for row in snapshots])
             raise InvalidHashException(
                 'No unique match for: {}'.format(partial), matches
             )
@@ -301,8 +317,8 @@ class Repository:
         it needs better performance.
         """
         # Get all files and directories for this level (excluding repo)
-        directories = utils.list_directories(self.root, [self.REPO_DIR])
-        files = utils.list_files(self.root)
+        directories = utils.list_directories(self.root_dir, [self.REPO_DIR])
+        files = utils.list_files(self.root_dir)
 
         # Remove all of these files and recursively remove directories
         # Remove files
@@ -315,7 +331,7 @@ class Repository:
         # Get hash of the current snapshot
         top_hash, _ = self._current_snapshot_hash()
 
-        self._build_tree(top_hash, self.root)
+        self._build_tree(top_hash, self.root_dir)
 
     def _build_tree(self, node_hash, current_path):
         """Recursive function to rebuild file structure for objects"""
@@ -409,11 +425,15 @@ class Repository:
         with open(ref_path, 'w') as ref_file:
             ref_file.write(new_hash)
 
-    def _insert_snapshot(self, obj_hash, label='', message='', user=''):
+    def _insert_snapshot(
+            self, obj_hash, label='',
+            message='', user='', branch=None):
         """Updates snapshots database with snapshot data"""
+        if branch is None:
+            branch = self.current_branch()
         data = {
             'hash': obj_hash,
-            'branch': self.current_branch(),
+            'branch': branch,
             'label': label,
             'message': message,
             'user': user,
@@ -558,6 +578,7 @@ class Repository:
           The file name hash no longer will reflect the true file
           content, rather the content that the delta reflects.
         """
+
         # Check if the path is in the objhashcache
         if obj_path not in self.objhashcache:
             # Return the uncompress content
@@ -577,7 +598,7 @@ class Repository:
         )
 
         # Format delta contents
-        patch_tuple = (obj_hash, patch)
+        patch_tuple = (ref_hash, patch)
         return pickle.dumps(patch_tuple)
 
     def _read_object(self, obj_hash):
@@ -598,7 +619,6 @@ class Repository:
         if obj_hash != self._hash_diget(content):
             # Delta object must be rebuilt
             patch_tuple = pickle.loads(content)
-            print(patch_tuple)
             ref_content = self._read_object(patch_tuple[0])
             return bindifflib.patch(patch_tuple[1], ref_content)
 
