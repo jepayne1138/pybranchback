@@ -124,7 +124,7 @@ class Repository:
         self._set_branch(self.DEFAULT_BRANCH)
 
         # Create objhashcache file and set as empty
-        self._save_hashmap()
+        self._save_objhashcache()
 
         # Create the snapshots database
         ssdb.execute(self.FILES['snapshots'], ssdb.CREATE)
@@ -153,8 +153,8 @@ class Repository:
                 'Save as branch to make changes.'
             )
 
-        # Save updated hashmap
-        self._save_hashmap()
+        # Save updated hashcache
+        self._save_objhashcache()
 
         # Update current branch head with new snapshot hash
         self._update_branch_head(top_hash)
@@ -242,7 +242,7 @@ class Repository:
         """
         # Validate given branch name
         if name not in self.list_branches():
-            raise ValueError('No branch found: '.format(name))
+            raise ValueError('No branch found: {}'.format(name))
 
         # Raise exception on a dirty directory if no force option
         if not force:
@@ -328,10 +328,16 @@ class Repository:
         for directory in directories:
             shutil.rmtree(self._join_root(directory))
 
+        # Clears the current hashcache; must be rebuild along with files
+        self.objhashcache = {}
+
         # Get hash of the current snapshot
         top_hash, _ = self._current_snapshot_hash()
 
         self._build_tree(top_hash, self.root_dir)
+
+        # Save the rebuilt hashcache
+        self._save_objhashcache()
 
     def _build_tree(self, node_hash, current_path):
         """Recursive function to rebuild file structure for objects"""
@@ -340,6 +346,9 @@ class Repository:
         for line in content.split('\n'):
             obj_type, obj_hash, obj_name = self._parse_tree_line(line)
             new_path = os.path.join(current_path, obj_name)
+
+            # Add the new file or directory to the objhashcache
+            self.objhashcache[new_path] = obj_hash
 
             # Process each type of object
             if obj_type == 'tree':
@@ -366,7 +375,7 @@ class Repository:
         with open(self.FILES['head'], 'w') as head_file:
             head_file.write(branch_name)
 
-    def _save_hashmap(self):
+    def _save_objhashcache(self):
         """Saves the current state of the hashmap"""
         with open(self.FILES['objhashcache'], 'wb') as hash_file:
             pickle.dump(self.objhashcache, hash_file)

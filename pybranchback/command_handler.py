@@ -70,11 +70,11 @@ def parse_arguments():
         'snapshot', type=str, nargs='?',
         help='Identifier of the snapshot to branch from'
     )
-    save_parser.add_argument(
+    branch_parser.add_argument(
         '-m', '--message', type=str, default='',
         help='Assigns a message to the snapshot'
     )
-    save_parser.add_argument(
+    branch_parser.add_argument(
         '-u', '--user', type=str, default='',
         help='Assigns a user to the snapshot'
     )
